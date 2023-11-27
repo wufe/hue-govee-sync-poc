@@ -13,6 +13,15 @@ type GoveeScanRequestMsgData struct {
 	AccountTopic string `json:"account_topic"`
 }
 
+type GoveeGenericResponse struct {
+	Msg GoveeGenericResponseMsg `json:"msg"`
+}
+
+type GoveeGenericResponseMsg struct {
+	Cmd  string      `json:"cmd"`
+	Data interface{} `json:"data"`
+}
+
 type GoveeScanResponse struct {
 	Msg GoveeScanResponseMsg `json:"msg"`
 }
@@ -42,5 +51,30 @@ type GoveeTurnMsg struct {
 }
 
 type GoveeTurnMsgData struct {
+	Value int `json:"value"`
+}
+
+type GoveeStatusRequest struct {
+	Msg GoveeStatusRequestMsg `json:"msg"`
+}
+
+type GoveeStatusRequestMsg struct {
+	Cmd  string                    `json:"cmd"`
+	Data GoveeStatusRequestMsgData `json:"data"`
+}
+
+type GoveeStatusRequestMsgData struct {
+}
+
+type GoveeBrightnessRequest struct {
+	Msg GoveeBrightnessRequestMsg `json:"msg"`
+}
+
+type GoveeBrightnessRequestMsg struct {
+	Cmd  string                        `json:"cmd"`
+	Data GoveeBrightnessRequestMsgData `json:"data"`
+}
+
+type GoveeBrightnessRequestMsgData struct {
 	Value int `json:"value"`
 }

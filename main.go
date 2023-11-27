@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"strings"
@@ -16,6 +17,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// https://app-h5.govee.com/user-manual/wlan-guide
+
 const (
 	multicastAddress = "239.255.255.250"
 	broadcastPort    = 4001
@@ -24,6 +27,8 @@ const (
 	appName          = "hue-govee synchronizer"
 	pollingDuration  = time.Duration(200 * time.Millisecond)
 )
+
+var goveeBrightness float64 = 100
 
 func main() {
 
@@ -57,7 +62,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	request := GoveeScanRequest{
+	scanRequest := GoveeScanRequest{
 		Msg: GoveeScanRequestMsg{
 			Cmd: "scan",
 			Data: GoveeScanRequestMsgData{
@@ -66,7 +71,7 @@ func main() {
 		},
 	}
 
-	requestJSON, err := json.Marshal(request)
+	requestJSON, err := json.Marshal(scanRequest)
 	if err != nil {
 		fmt.Println("Error encoding JSON:", err)
 		return
@@ -85,14 +90,15 @@ func main() {
 
 		go func() {
 			for msg := range receiveFromGovee {
-				log.Info().Msgf("IP: %s <-> MAC: %s <-> SKU: %s", msg.Msg.Data.IP, msg.Msg.Data.Device, msg.Msg.Data.SKU)
+				fmt.Println(msg)
+				// log.Info().Msgf("IP: %s <-> MAC: %s <-> SKU: %s", msg.Msg.Data.IP, msg.Msg.Data.Device, msg.Msg.Data.SKU)
 			}
 		}()
 		time.Sleep(20 * time.Second)
 		return
 	}
 
-	sendToGovee := make(chan []byte)
+	sendToGovee := make(chan []byte, 10)
 
 	go func() {
 
@@ -129,13 +135,19 @@ func main() {
 		}
 	}()
 
+	sendToGovee <- mustMarshal(GoveeStatusRequest{
+		Msg: GoveeStatusRequestMsg{
+			Cmd: "devStatus",
+		},
+	})
+
 	go listenFromHueDevice(ctx, *bridgeIP, *bridgeUsername, sendToGovee)
 	connectToGoveeDeviceAndForward(ctx, *chosenSKU, receiveFromGovee, sendToGovee)
 }
 
-func startUDPServer(ctx context.Context) (func(), <-chan GoveeScanResponse, error) {
+func startUDPServer(ctx context.Context) (func(), <-chan GoveeGenericResponse, error) {
 
-	resp := make(chan GoveeScanResponse, 20)
+	resp := make(chan GoveeGenericResponse, 20)
 
 	serverAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", listenPort))
 	if err != nil {
@@ -167,7 +179,7 @@ func startUDPServer(ctx context.Context) (func(), <-chan GoveeScanResponse, erro
 				}
 
 				// Parse the received JSON response
-				var response GoveeScanResponse
+				var response GoveeGenericResponse
 				err = json.Unmarshal(buffer[:n], &response)
 				if err != nil {
 					log.Err(err).Msgf("Error decoding JSON response: %s", err)
@@ -252,59 +264,129 @@ func listenFromHueDevice(ctx context.Context, bridgeIP string, bridgeUsername st
 	// }
 	// fmt.Printf("config: %#v\n\n", config)
 
-	var lastUpdate *time.Time
-	var buttonEvent float64
+	var dialLastUpdate *time.Time
+	var dialButtonEvent float64
+
+	var dialRotaryLastUpdate *time.Time
+	var dialRotaryExpectedRotation float64
 
 	for {
 		state, err := bridge.GetFullStateContext(ctx)
 		if err != nil {
-			panic(err)
+			log.Err(err).Msgf("Cannot get full state context: %s", err)
+			continue
 		}
 
 		for _, v := range state["sensors"].(map[string]interface{}) {
 			sensorValue := v.(map[string]interface{})
-			if uniqueid, found := sensorValue["uniqueid"]; found && uniqueid == tapDial.UniqueID {
+			if uniqueid, found := sensorValue["uniqueid"]; found {
 
-				state := sensorValue["state"].(map[string]interface{})
+				switch uniqueid {
+				case tapDial.UniqueID:
 
-				t, err := time.Parse("2006-01-02T15:04:05", state["lastupdated"].(string))
-				if err != nil {
-					panic(err)
-				}
+					state := sensorValue["state"].(map[string]interface{})
 
-				button := state["buttonevent"].(float64)
-				if lastUpdate == nil {
-					lastUpdate = &t
-					buttonEvent = button
-				} else {
-					if !lastUpdate.Equal(t) || button != buttonEvent {
-						lastUpdate = &t
-						buttonEvent = button
-						// Pressed
-						switch buttonEvent {
-						case 1002:
-							log.Info().Msgf("Turning on Govee light")
-							sendToGovee <- mustMarshal(GoveeTurn{
-								Msg: GoveeTurnMsg{
-									Cmd: "turn",
-									Data: GoveeTurnMsgData{
-										Value: 1,
+					t, err := time.Parse("2006-01-02T15:04:05", state["lastupdated"].(string))
+					if err != nil {
+						panic(err)
+					}
+
+					button := state["buttonevent"].(float64)
+					if dialLastUpdate == nil {
+						dialLastUpdate = &t
+						dialButtonEvent = button
+					} else {
+						if !dialLastUpdate.Equal(t) || button != dialButtonEvent {
+							dialLastUpdate = &t
+							dialButtonEvent = button
+							// Pressed
+							switch dialButtonEvent {
+							case 1002:
+								log.Info().Msgf("Turning on Govee light")
+								sendToGovee <- mustMarshal(GoveeTurn{
+									Msg: GoveeTurnMsg{
+										Cmd: "turn",
+										Data: GoveeTurnMsgData{
+											Value: 1,
+										},
 									},
-								},
-							})
-						case 4002:
-							log.Info().Msgf("Turning off Govee light")
-							sendToGovee <- mustMarshal(GoveeTurn{
-								Msg: GoveeTurnMsg{
-									Cmd: "turn",
-									Data: GoveeTurnMsgData{
-										Value: 0,
+								})
+							case 4002:
+								log.Info().Msgf("Turning off Govee light")
+								sendToGovee <- mustMarshal(GoveeTurn{
+									Msg: GoveeTurnMsg{
+										Cmd: "turn",
+										Data: GoveeTurnMsgData{
+											Value: 0,
+										},
 									},
-								},
-							})
-
+								})
+							}
 						}
 					}
+				case tapDialRotary.UniqueID:
+					state := sensorValue["state"].(map[string]interface{})
+
+					t, err := time.Parse("2006-01-02T15:04:05", state["lastupdated"].(string))
+					if err != nil {
+						panic(err)
+					}
+
+					expectedRotation := state["expectedrotation"].(float64)
+					if dialRotaryLastUpdate == nil {
+						dialRotaryLastUpdate = &t
+						dialRotaryExpectedRotation = expectedRotation
+					} else {
+						if !dialRotaryLastUpdate.Equal(t) || expectedRotation != dialRotaryExpectedRotation {
+							dialRotaryLastUpdate = &t
+							dialRotaryExpectedRotation = expectedRotation
+							// Rotated
+							previousBrightness := goveeBrightness
+							goveeBrightness = math.Min(math.Max(goveeBrightness+(expectedRotation/8), 0), 100)
+
+							if previousBrightness == 0 && goveeBrightness > 0 {
+								// Turning on the light
+								log.Info().Msgf("Turning on Govee light")
+								sendToGovee <- mustMarshal(GoveeTurn{
+									Msg: GoveeTurnMsg{
+										Cmd: "turn",
+										Data: GoveeTurnMsgData{
+											Value: 1,
+										},
+									},
+								})
+							} else if previousBrightness > 0 && goveeBrightness == 0 {
+								// Turning off the light
+								log.Info().Msgf("Turning off Govee light")
+								sendToGovee <- mustMarshal(GoveeTurn{
+									Msg: GoveeTurnMsg{
+										Cmd: "turn",
+										Data: GoveeTurnMsgData{
+											Value: 0,
+										},
+									},
+								})
+							}
+
+							if previousBrightness != goveeBrightness && goveeBrightness != 0 {
+								log.Info().Msgf("Setting brightness to %.0f", goveeBrightness)
+								sendToGovee <- mustMarshal(GoveeBrightnessRequest{
+									Msg: GoveeBrightnessRequestMsg{
+										Cmd: "brightness",
+										Data: GoveeBrightnessRequestMsgData{
+											Value: int(goveeBrightness),
+										},
+									},
+								})
+							}
+						}
+					}
+					// fmt.Printf("%#v\n", state)
+
+					// for k, v := range state {
+					// 	fmt.Printf("key: %#v\n", k)
+					// 	fmt.Printf("value: %#v\n\n", v)
+					// }
 				}
 
 				// for k, v := range state {
@@ -318,13 +400,13 @@ func listenFromHueDevice(ctx context.Context, bridgeIP string, bridgeUsername st
 		time.Sleep(pollingDuration)
 	}
 
-	fmt.Println(lastUpdate, buttonEvent)
+	fmt.Println(dialLastUpdate, dialButtonEvent)
 
 	// fmt.Println("sensors", sensors)
 }
 
-func connectToGoveeDeviceAndForward(ctx context.Context, sku string, receiveFromGovee <-chan GoveeScanResponse, sendToGovee chan []byte) {
-	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+func connectToGoveeDeviceAndForward(ctx context.Context, sku string, receiveFromGovee <-chan GoveeGenericResponse, sendToGovee chan []byte) {
+	timeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	ip := ""
@@ -336,13 +418,22 @@ L:
 			if !ok {
 				return
 			}
-			if msg.Msg.Data.SKU == sku {
-				log.Info().Msgf("Received device %s response.", msg.Msg.Data.SKU)
-				ip = msg.Msg.Data.IP
-				break L
+			fmt.Println("here:", msg)
+			switch msg.Msg.Cmd {
+			case "scan":
+				data := msg.Msg.Data.(map[string]interface{})
+				foundSKU := data["sku"].(string)
+				foundIP := data["ip"].(string)
+				if sku == foundSKU {
+					log.Info().Msgf("Received device %s response.", sku)
+					ip = foundIP
+					break L
+				}
+			default:
+				log.Warn().Msgf("Received a message of type %s but the program is not in a valid state to handle this kind of response", msg.Msg.Cmd)
 			}
 		case <-timeout.Done():
-			log.Warn().Msgf("Response not received in 5 seconds: closing.")
+			log.Warn().Msgf("Response not received in 10 seconds: closing.")
 			return
 		}
 	}
@@ -353,6 +444,29 @@ L:
 	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		for {
+			select {
+			case msg, ok := <-receiveFromGovee:
+				if !ok {
+					return
+				}
+				switch msg.Msg.Cmd {
+				case "devStatus":
+					data := msg.Msg.Data.(map[string]interface{})
+					brightness := data["brightness"].(float64)
+					goveeBrightness = brightness
+					log.Info().Msgf("Brightness of the device: %f", brightness)
+				default:
+					log.Warn().Msgf("Response type %#v not supported", msg.Msg.Cmd)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	for msg := range sendToGovee {
 		log.Debug().Msgf("Sending datagram to %s: %s", ip, string(msg))
 		_, err := conn.Write(msg)
