@@ -26,9 +26,11 @@ const (
 	sendPort         = 4003
 	appName          = "hue-govee synchronizer"
 	pollingDuration  = time.Duration(200 * time.Millisecond)
+	listenToEvents   = false
 )
 
 var goveeBrightness float64 = 100
+var goveeOn = false
 
 func main() {
 
@@ -277,123 +279,198 @@ func listenFromHueDevice(ctx context.Context, bridgeIP string, bridgeUsername st
 			continue
 		}
 
-		for _, v := range state["sensors"].(map[string]interface{}) {
-			sensorValue := v.(map[string]interface{})
-			if uniqueid, found := sensorValue["uniqueid"]; found {
+		// b, _ := json.Marshal(state)
 
-				switch uniqueid {
-				case tapDial.UniqueID:
+		// fmt.Printf("\n\n\n%#v\n\n", string(b))
+		// os.Exit(0)
 
-					state := sensorValue["state"].(map[string]interface{})
+		if listenToEvents {
+			for _, v := range state["sensors"].(map[string]interface{}) {
+				sensorValue := v.(map[string]interface{})
+				if uniqueid, found := sensorValue["uniqueid"]; found {
 
-					t, err := time.Parse("2006-01-02T15:04:05", state["lastupdated"].(string))
-					if err != nil {
-						panic(err)
-					}
+					switch uniqueid {
+					case tapDial.UniqueID:
 
-					button := state["buttonevent"].(float64)
-					if dialLastUpdate == nil {
-						dialLastUpdate = &t
-						dialButtonEvent = button
-					} else {
-						if !dialLastUpdate.Equal(t) || button != dialButtonEvent {
+						state := sensorValue["state"].(map[string]interface{})
+
+						t, err := time.Parse("2006-01-02T15:04:05", state["lastupdated"].(string))
+						if err != nil {
+							panic(err)
+						}
+
+						button := state["buttonevent"].(float64)
+						if dialLastUpdate == nil {
 							dialLastUpdate = &t
 							dialButtonEvent = button
-							// Pressed
-							switch dialButtonEvent {
-							case 1002:
-								log.Info().Msgf("Turning on Govee light")
-								sendToGovee <- mustMarshal(GoveeTurn{
-									Msg: GoveeTurnMsg{
-										Cmd: "turn",
-										Data: GoveeTurnMsgData{
-											Value: 1,
+						} else {
+							if !dialLastUpdate.Equal(t) || button != dialButtonEvent {
+								dialLastUpdate = &t
+								dialButtonEvent = button
+								fmt.Println("pressed")
+								// Pressed
+								switch dialButtonEvent {
+								case 1002:
+									log.Info().Msgf("Turning on Govee light")
+									sendToGovee <- mustMarshal(GoveeTurn{
+										Msg: GoveeTurnMsg{
+											Cmd: "turn",
+											Data: GoveeTurnMsgData{
+												Value: 1,
+											},
 										},
-									},
-								})
-							case 4002:
-								log.Info().Msgf("Turning off Govee light")
-								sendToGovee <- mustMarshal(GoveeTurn{
-									Msg: GoveeTurnMsg{
-										Cmd: "turn",
-										Data: GoveeTurnMsgData{
-											Value: 0,
+									})
+								case 4002:
+									log.Info().Msgf("Turning off Govee light")
+									sendToGovee <- mustMarshal(GoveeTurn{
+										Msg: GoveeTurnMsg{
+											Cmd: "turn",
+											Data: GoveeTurnMsgData{
+												Value: 0,
+											},
 										},
-									},
-								})
+									})
+								}
 							}
 						}
-					}
-				case tapDialRotary.UniqueID:
-					state := sensorValue["state"].(map[string]interface{})
+					case tapDialRotary.UniqueID:
+						state := sensorValue["state"].(map[string]interface{})
 
-					t, err := time.Parse("2006-01-02T15:04:05", state["lastupdated"].(string))
-					if err != nil {
-						panic(err)
-					}
+						t, err := time.Parse("2006-01-02T15:04:05", state["lastupdated"].(string))
+						if err != nil {
+							panic(err)
+						}
 
-					expectedRotation := state["expectedrotation"].(float64)
-					if dialRotaryLastUpdate == nil {
-						dialRotaryLastUpdate = &t
-						dialRotaryExpectedRotation = expectedRotation
-					} else {
-						if !dialRotaryLastUpdate.Equal(t) || expectedRotation != dialRotaryExpectedRotation {
+						expectedRotation := state["expectedrotation"].(float64)
+						if dialRotaryLastUpdate == nil {
 							dialRotaryLastUpdate = &t
 							dialRotaryExpectedRotation = expectedRotation
-							// Rotated
-							previousBrightness := goveeBrightness
-							goveeBrightness = math.Min(math.Max(goveeBrightness+(expectedRotation/8), 0), 100)
+						} else {
+							if !dialRotaryLastUpdate.Equal(t) || expectedRotation != dialRotaryExpectedRotation {
+								dialRotaryLastUpdate = &t
+								dialRotaryExpectedRotation = expectedRotation
+								// Rotated
+								previousBrightness := goveeBrightness
+								goveeBrightness = math.Min(math.Max(goveeBrightness+(expectedRotation/8), 0), 100)
 
-							if previousBrightness == 0 && goveeBrightness > 0 {
-								// Turning on the light
-								log.Info().Msgf("Turning on Govee light")
-								sendToGovee <- mustMarshal(GoveeTurn{
-									Msg: GoveeTurnMsg{
-										Cmd: "turn",
-										Data: GoveeTurnMsgData{
-											Value: 1,
+								if previousBrightness == 0 && goveeBrightness > 0 {
+									// Turning on the light
+									log.Info().Msgf("Turning on Govee light")
+									sendToGovee <- mustMarshal(GoveeTurn{
+										Msg: GoveeTurnMsg{
+											Cmd: "turn",
+											Data: GoveeTurnMsgData{
+												Value: 1,
+											},
 										},
-									},
-								})
-							} else if previousBrightness > 0 && goveeBrightness == 0 {
-								// Turning off the light
-								log.Info().Msgf("Turning off Govee light")
-								sendToGovee <- mustMarshal(GoveeTurn{
-									Msg: GoveeTurnMsg{
-										Cmd: "turn",
-										Data: GoveeTurnMsgData{
-											Value: 0,
+									})
+								} else if previousBrightness > 0 && goveeBrightness == 0 {
+									// Turning off the light
+									log.Info().Msgf("Turning off Govee light")
+									sendToGovee <- mustMarshal(GoveeTurn{
+										Msg: GoveeTurnMsg{
+											Cmd: "turn",
+											Data: GoveeTurnMsgData{
+												Value: 0,
+											},
 										},
-									},
-								})
-							}
+									})
+								}
 
-							if previousBrightness != goveeBrightness && goveeBrightness != 0 {
-								log.Info().Msgf("Setting brightness to %.0f", goveeBrightness)
-								sendToGovee <- mustMarshal(GoveeBrightnessRequest{
-									Msg: GoveeBrightnessRequestMsg{
-										Cmd: "brightness",
-										Data: GoveeBrightnessRequestMsgData{
-											Value: int(goveeBrightness),
+								if previousBrightness != goveeBrightness && goveeBrightness != 0 {
+									log.Info().Msgf("Setting brightness to %.0f", goveeBrightness)
+									sendToGovee <- mustMarshal(GoveeBrightnessRequest{
+										Msg: GoveeBrightnessRequestMsg{
+											Cmd: "brightness",
+											Data: GoveeBrightnessRequestMsgData{
+												Value: int(goveeBrightness),
+											},
 										},
-									},
-								})
+									})
+								}
 							}
 						}
+						// fmt.Printf("%#v\n", state)
+
+						// for k, v := range state {
+						// 	fmt.Printf("key: %#v\n", k)
+						// 	fmt.Printf("value: %#v\n\n", v)
+						// }
 					}
-					// fmt.Printf("%#v\n", state)
 
 					// for k, v := range state {
+
 					// 	fmt.Printf("key: %#v\n", k)
 					// 	fmt.Printf("value: %#v\n\n", v)
 					// }
 				}
+			}
+		} else {
+			groups := state["groups"].(map[string]interface{})
+			for _, v := range groups {
 
-				// for k, v := range state {
+				group := v.(map[string]interface{})
 
-				// 	fmt.Printf("key: %#v\n", k)
-				// 	fmt.Printf("value: %#v\n\n", v)
-				// }
+				name := group["name"]
+				if name == "Soggiorno" {
+
+					state := group["state"].(map[string]interface{})
+
+					allOn := state["all_on"].(bool)
+
+					if allOn {
+						if !goveeOn {
+
+							goveeOn = true
+
+							log.Info().Msgf("Turning on Govee light")
+							sendToGovee <- mustMarshal(GoveeTurn{
+								Msg: GoveeTurnMsg{
+									Cmd: "turn",
+									Data: GoveeTurnMsgData{
+										Value: 1,
+									},
+								},
+							})
+						}
+					} else {
+						if goveeOn {
+
+							goveeOn = false
+
+							log.Info().Msgf("Turning off Govee light")
+							sendToGovee <- mustMarshal(GoveeTurn{
+								Msg: GoveeTurnMsg{
+									Cmd: "turn",
+									Data: GoveeTurnMsgData{
+										Value: 0,
+									},
+								},
+							})
+						}
+					}
+
+					action := group["action"].(map[string]interface{})
+
+					bri := action["bri"].(float64)
+					brightness := int(math.Max(math.Min((bri/255)*100, 100), 0))
+
+					if goveeBrightness != float64(brightness) {
+
+						goveeBrightness = float64(brightness)
+
+						log.Info().Msgf("Setting brightness to %.0f", goveeBrightness)
+						sendToGovee <- mustMarshal(GoveeBrightnessRequest{
+							Msg: GoveeBrightnessRequestMsg{
+								Cmd: "brightness",
+								Data: GoveeBrightnessRequestMsgData{
+									Value: int(goveeBrightness),
+								},
+							},
+						})
+					}
+
+				}
 			}
 		}
 
@@ -456,6 +533,9 @@ L:
 				case "devStatus":
 					data := msg.Msg.Data.(map[string]interface{})
 					brightness := data["brightness"].(float64)
+					onOff := data["onOff"].(float64)
+					goveeOn = onOff == 1
+
 					goveeBrightness = brightness
 					log.Info().Msgf("Brightness of the device: %f", brightness)
 				default:
