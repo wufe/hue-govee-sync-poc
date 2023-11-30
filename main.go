@@ -408,17 +408,24 @@ func listenFromHueDevice(ctx context.Context, bridgeIP string, bridgeUsername st
 				}
 			}
 		} else {
-			groups := state["groups"].(map[string]interface{})
-			for _, v := range groups {
+			// groups := state["groups"].(map[string]interface{})
+			lights := state["lights"].(map[string]interface{})
+			// for _, v := range groups {
+			for _, v := range lights {
 
-				group := v.(map[string]interface{})
+				// group := v.(map[string]interface{})
+				light := v.(map[string]interface{})
 
-				name := group["name"]
-				if name == "Soggiorno" {
+				// name := group["name"]
+				name := light["name"]
+				// if name == "Soggiorno" {
+				if name == "Hue Play 5" {
 
-					state := group["state"].(map[string]interface{})
+					// state := group["state"].(map[string]interface{})
+					state := light["state"].(map[string]interface{})
 
-					allOn := state["all_on"].(bool)
+					// allOn := state["all_on"].(bool)
+					allOn := state["on"].(bool)
 
 					if allOn {
 						if !goveeOn {
@@ -452,9 +459,10 @@ func listenFromHueDevice(ctx context.Context, bridgeIP string, bridgeUsername st
 						}
 					}
 
-					action := group["action"].(map[string]interface{})
+					// action := group["action"].(map[string]interface{})
 
-					bri := action["bri"].(float64)
+					// bri := action["bri"].(float64)
+					bri := state["bri"].(float64)
 					brightness := int(math.Max(math.Min((bri/255)*100, 100), 0))
 
 					if goveeBrightness != float64(brightness) {
@@ -472,15 +480,16 @@ func listenFromHueDevice(ctx context.Context, bridgeIP string, bridgeUsername st
 						})
 					}
 
-					xy := action["xy"].([]interface{})
+					// xy := action["xy"].([]interface{})
+					xy := state["xy"].([]interface{})
 
 					x := xy[0].(float64)
 					y := xy[1].(float64)
-					Y := bri / 255
+					// Y := bri / 255
 
-					r, g, b := xyToRGB(x, y, Y)
+					r, g, b := xyToRGB(x, y, bri)
 
-					// fmt.Println(xy)
+					// fmt.Println(x, y, Y*255)
 
 					// r, g, b := colorful.Xyy(x, y, Y).RGB255()
 					// k := temperature.ToKelvin(r, g, b)
@@ -610,7 +619,7 @@ func errorIsLinkButtonNotPressed(err error) bool {
 
 func xyToRGB(x float64, y float64, brightness float64) (uint8, uint8, uint8) {
 	z := 1 - x - y
-	Y := brightness
+	Y := brightness / 255
 	X := (Y / y) * x
 	Z := (Y / y) * z
 
@@ -636,5 +645,13 @@ func xyToRGB(x float64, y float64, brightness float64) (uint8, uint8, uint8) {
 		b = (1.0+0.055)*math.Pow(b, (1.0/2.4)) - 0.055
 	}
 
-	return uint8(r * 255), uint8(g * 255), uint8(b * 255)
+	// If one component is greater than 1, weight components by that value
+	max := math.Max(r, math.Max(g, b))
+	if max > 1 {
+		r = r / max
+		g = g / max
+		b = b / max
+	}
+
+	return uint8(math.Floor(r * 255)), uint8(math.Floor(g * 255)), uint8(math.Floor(b * 255))
 }
