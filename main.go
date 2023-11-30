@@ -31,6 +31,8 @@ const (
 
 var goveeBrightness float64 = 100
 var goveeOn = false
+var goveeColorR, goveeColorG, goveeColorB uint8
+var goveeColorK uint16
 
 func main() {
 
@@ -470,6 +472,44 @@ func listenFromHueDevice(ctx context.Context, bridgeIP string, bridgeUsername st
 						})
 					}
 
+					xy := action["xy"].([]interface{})
+
+					x := xy[0].(float64)
+					y := xy[1].(float64)
+					Y := bri / 255
+
+					r, g, b := xyToRGB(x, y, Y)
+
+					// fmt.Println(xy)
+
+					// r, g, b := colorful.Xyy(x, y, Y).RGB255()
+					// k := temperature.ToKelvin(r, g, b)
+
+					// fmt.Println(r, g, b, k)
+
+					if r != goveeColorR || g != goveeColorG || b != goveeColorB /* || k != goveeColorK*/ {
+						goveeColorR = r
+						goveeColorG = g
+						goveeColorB = b
+						// goveeColorK = k
+
+						sendToGovee <- mustMarshal(GoveeColorRequest{
+							Msg: GoveeColorRequestMsg{
+								Cmd: "colorwc",
+								Data: GoveeColorRequestMsgData{
+									Color: GoveeColorRequestMsgDataColor{
+										R: int(r),
+										G: int(g),
+										B: int(b),
+									},
+									// Kelvin: int(k),
+								},
+							},
+						})
+					}
+
+					// fmt.Println(r, g, b)
+
 				}
 			}
 		}
@@ -566,4 +606,35 @@ func mustMarshal(obj any) []byte {
 
 func errorIsLinkButtonNotPressed(err error) bool {
 	return strings.Contains(err.Error(), "link button not pressed")
+}
+
+func xyToRGB(x float64, y float64, brightness float64) (uint8, uint8, uint8) {
+	z := 1 - x - y
+	Y := brightness
+	X := (Y / y) * x
+	Z := (Y / y) * z
+
+	r := X*1.656492 - Y*0.354851 - Z*0.255038
+	g := -X*0.707196 + Y*1.655397 + Z*0.036152
+	b := X*0.051713 - Y*0.121364 + Z*1.011530
+
+	if r <= 0.0031308 {
+		r = 12.92 * r
+	} else {
+		r = (1.0+0.055)*math.Pow(r, (1.0/2.4)) - 0.055
+	}
+
+	if g <= 0.0031308 {
+		g = 12.92 * g
+	} else {
+		g = (1.0+0.055)*math.Pow(g, (1.0/2.4)) - 0.055
+	}
+
+	if b <= 0.0031308 {
+		b = 12.92 * b
+	} else {
+		b = (1.0+0.055)*math.Pow(b, (1.0/2.4)) - 0.055
+	}
+
+	return uint8(r * 255), uint8(g * 255), uint8(b * 255)
 }

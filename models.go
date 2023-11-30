@@ -78,3 +78,23 @@ type GoveeBrightnessRequestMsg struct {
 type GoveeBrightnessRequestMsgData struct {
 	Value int `json:"value"`
 }
+
+type GoveeColorRequest struct {
+	Msg GoveeColorRequestMsg `json:"msg"`
+}
+
+type GoveeColorRequestMsg struct {
+	Cmd  string                   `json:"cmd"`
+	Data GoveeColorRequestMsgData `json:"data"`
+}
+
+type GoveeColorRequestMsgData struct {
+	Color  GoveeColorRequestMsgDataColor `json:"color"`
+	Kelvin int                           `json:"colorTemInKelvin"`
+}
+
+type GoveeColorRequestMsgDataColor struct {
+	R int `json:"r"`
+	G int `json:"g"`
+	B int `json:"b"`
+}
