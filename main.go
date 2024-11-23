@@ -40,16 +40,11 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	// Get CLI param
-	chosenSKU := flag.String("sku", "", "sku of the Govee light")
 	bridgeIP := flag.String("bridge", "", "ip of the Philips Hue bridge")
 	bridgeUsername := flag.String("username", "", "username of the Philips Hue bridge")
 	listen := flag.Bool("listen", false, "listen to events from the Hue bridge")
 	dialName := flag.String("dial", "", "name of the dial to listen to")
-	discovery := flag.Bool("discovery", false, "Discovery mode: scan for new devices")
 	flag.Parse()
-
-	fmt.Println("SKU:", *chosenSKU)
-	fmt.Println("Discovery mode:", *discovery)
 
 	if *listen {
 		listenToEvents = true
@@ -66,20 +61,12 @@ func main() {
 
 	goveeConnection := NewGoveeConnection(configuration)
 
-	// #region Start listen UDP server
-	// receiveFromGovee, closeUDPServer, err := startUDPServer(ctx)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// defer closeUDPServer()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		goveeConnection.Start(ctx)
 	}()
-	// #endregion
 
-	// #region Start UDP client connected to multicast and send scan request
 	multicastConn, err := openMulticastConnection()
 	if err != nil {
 		panic(err)
@@ -89,7 +76,6 @@ func main() {
 	if err := sendScanRequest(multicastConn); err != nil {
 		panic(err)
 	}
-	// #endregion
 
 	hueConnection := NewHueConnection(*bridgeIP, *bridgeUsername)
 
@@ -98,30 +84,6 @@ func main() {
 		defer wg.Done()
 		hueConnection.Start(ctx, configuration, goveeConnection)
 	}()
-
-	// if *chosenSKU == "" {
-	// 	log.Warn().Msgf("Light SKU not specified: printing out all retrieved and closing in 20 seconds")
-
-	// 	go func() {
-	// 		for msg := range receiveFromGovee {
-	// 			fmt.Println(msg)
-	// 			// log.Info().Msgf("IP: %s <-> MAC: %s <-> SKU: %s", msg.Msg.Data.IP, msg.Msg.Data.Device, msg.Msg.Data.SKU)
-	// 		}
-	// 	}()
-	// 	time.Sleep(20 * time.Second)
-	// 	return
-	// }
-
-	// sendToGovee := make(chan []byte, 10)
-
-	// sendToGovee <- mustMarshal(GoveeStatusRequest{
-	// 	Msg: GoveeStatusRequestMsg{
-	// 		Cmd: "devStatus",
-	// 	},
-	// })
-
-	// go listenFromHueDevice(ctx, *bridgeIP, *bridgeUsername, sendToGovee, goveeConnection)
-	// connectToGoveeDeviceAndForward(ctx, *chosenSKU, receiveFromGovee, sendToGovee)
 
 	wg.Wait()
 }
