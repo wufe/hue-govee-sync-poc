@@ -183,6 +183,8 @@ func (c *GoveeConnection) listenToUDPMessages(ctx context.Context, receiveFromGo
 						close(previousGoveeDeviceRegistered.sendChan)
 					}
 					previousGoveeDeviceRegistered.connMutex.Unlock()
+				} else {
+					log.Info().Msgf("Found Govee device [%s - %s - %s]", sku, ip, device)
 				}
 
 				// Register the device

@@ -10,7 +10,6 @@ import (
 	"slices"
 
 	"github.com/rs/zerolog/log"
-	"github.com/sanity-io/litter"
 )
 
 type Configuration struct {
@@ -47,8 +46,6 @@ func NewConfiguration() Configuration {
 	if err := json.Unmarshal(rawConfiguration, &configuration); err != nil {
 		panic(fmt.Errorf("error unmarshalling configuration: %w", err))
 	}
-
-	litter.Dump(configuration)
 
 	return configuration
 }
