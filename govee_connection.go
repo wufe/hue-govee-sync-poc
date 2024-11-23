@@ -162,14 +162,14 @@ func (c *GoveeConnection) listenToUDPMessages(ctx context.Context, receiveFromGo
 			}
 			switch response.Msg.Cmd {
 			case "scan":
-				data := response.Msg.Data.(map[string]string)
-				ip := data["ip"]
-				device := data["device"]
-				sku := data["sku"]
+				data := response.Msg.Data.(map[string]interface{})
+				ip := data["ip"].(string)
+				device := data["device"].(string)
+				sku := data["sku"].(string)
 
 				c.goveeDevicesOfInterestMutex.Lock()
 				previousGoveeDeviceRegistered, ok := c.goveeDevices[device]
-				if ok {
+				if ok && previousGoveeDeviceRegistered != nil {
 					log.Info().Msgf(
 						"Device [%s - %s - %s] already registered: moving to [%s - %s - %s]",
 						previousGoveeDeviceRegistered.SKU, previousGoveeDeviceRegistered.IP, previousGoveeDeviceRegistered.Device,
@@ -256,6 +256,7 @@ func startSendingMessages(ctx context.Context, device *FoundGoveeDevice) {
 				device.connMutex.Unlock()
 				return
 			}
+			log.Debug().Msgf("Forwarding message to Govee device [%s - %s - %s]: %s", device.SKU, device.IP, device.Device, string(data))
 			_, err := device.conn.Write(data)
 			if err != nil {
 				err = fmt.Errorf("error writing to connection: %w", err)

@@ -59,51 +59,69 @@ func (h *HueConnection) pollState(ctx context.Context, configuration Configurati
 		case <-ctx.Done():
 			return
 		default:
-			state, err := h.bridge.GetFullStateContext(ctx)
+			fullBridgeState, err := h.bridge.GetFullStateContext(ctx)
 			if err != nil {
 				err = fmt.Errorf("error getting full state context: %w", err)
 				log.Err(err).Msg(err.Error())
 				continue
 			}
-			sensors := state["sensors"].(map[string]interface{})
+			sensors := fullBridgeState["sensors"].(map[string]interface{})
 			for _, rawSensorValue := range sensors {
 				sensorValue := rawSensorValue.(map[string]interface{})
-				uniqueID := sensorValue["uniqueid"].(string)
 
+				rawName, found := sensorValue["name"]
+				if !found {
+					continue
+				}
+
+				name := rawName.(string)
 				{
 					h.dialsMutex.RLock()
-					dial, found := h.dials[uniqueID]
+					dial, found := h.dials[name]
 					h.dialsMutex.RUnlock()
 					if found {
-						dialStatus := h.dialsStatuses[uniqueID]
+						dialStatus := h.dialsStatuses[name]
 
 						dialState := sensorValue["state"].(map[string]interface{})
 
-						lastUpdated, err := time.Parse(time.RFC3339, dialState["lastupdated"].(string))
+						lastUpdated, err := time.Parse("2006-01-02T15:04:05", dialState["lastupdated"].(string))
 						if err != nil {
 							log.Err(err).Msg("error parsing time")
 							continue
 						}
 
-						button := state["buttonevent"].(float64)
+						button := dialState["buttonevent"].(float64)
 						if dialStatus.lastUpdate == nil {
 							dialStatus.lastUpdate = &lastUpdated
 							dialStatus.buttonEvent = button
-							h.dialsStatuses[uniqueID] = dialStatus
+							h.dialsStatuses[name] = dialStatus
 							continue
 						}
 
-						if dialStatus.lastUpdate.Equal(lastUpdated) && button != dialStatus.buttonEvent {
+						if dialStatus.lastUpdate.Equal(lastUpdated) && button == dialStatus.buttonEvent {
 							continue
 						}
 
 						dialStatus.lastUpdate = &lastUpdated
 						dialStatus.buttonEvent = button
-						h.dialsStatuses[uniqueID] = dialStatus
+						h.dialsStatuses[name] = dialStatus
 
 						log.Debug().Msgf("Button %d pressed on dial [%s]", int(dialStatus.buttonEvent), dial.Name)
 
-						messages := configuration.GetMessagesToDispatchOnHueTapDialButtonPressed(dial.Name, int(dialStatus.buttonEvent))
+						buttonPressed := 0
+
+						switch dialStatus.buttonEvent {
+						case 1002:
+							buttonPressed = 1
+						case 2002:
+							buttonPressed = 2
+						case 3002:
+							buttonPressed = 3
+						case 4002:
+							buttonPressed = 4
+						}
+
+						messages := configuration.GetMessagesToDispatchOnHueTapDialButtonPressed(dial.Name, buttonPressed)
 						for _, message := range messages {
 							if err := commandSender.SendMsg(message.Device, message.Data); err != nil {
 								log.Err(err).Msg("error sending message")

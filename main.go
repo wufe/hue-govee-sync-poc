@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/amimof/huego"
@@ -47,6 +48,7 @@ func main() {
 	discovery := flag.Bool("discovery", false, "Discovery mode: scan for new devices")
 	flag.Parse()
 
+	fmt.Println("SKU:", *chosenSKU)
 	fmt.Println("Discovery mode:", *discovery)
 
 	if *listen {
@@ -58,15 +60,23 @@ func main() {
 	}
 
 	ctx := context.Background()
+	var wg sync.WaitGroup
 
-	goveeConnection := NewGoveeConnection(NewConfiguration())
+	configuration := NewConfiguration()
+
+	goveeConnection := NewGoveeConnection(configuration)
 
 	// #region Start listen UDP server
-	receiveFromGovee, closeUDPServer, err := startUDPServer(ctx)
-	if err != nil {
-		panic(err)
-	}
-	defer closeUDPServer()
+	// receiveFromGovee, closeUDPServer, err := startUDPServer(ctx)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// defer closeUDPServer()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		goveeConnection.Start(ctx)
+	}()
 	// #endregion
 
 	// #region Start UDP client connected to multicast and send scan request
@@ -81,29 +91,39 @@ func main() {
 	}
 	// #endregion
 
-	if *chosenSKU == "" {
-		log.Warn().Msgf("Light SKU not specified: printing out all retrieved and closing in 20 seconds")
+	hueConnection := NewHueConnection(*bridgeIP, *bridgeUsername)
 
-		go func() {
-			for msg := range receiveFromGovee {
-				fmt.Println(msg)
-				// log.Info().Msgf("IP: %s <-> MAC: %s <-> SKU: %s", msg.Msg.Data.IP, msg.Msg.Data.Device, msg.Msg.Data.SKU)
-			}
-		}()
-		time.Sleep(20 * time.Second)
-		return
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		hueConnection.Start(ctx, configuration, goveeConnection)
+	}()
 
-	sendToGovee := make(chan []byte, 10)
+	// if *chosenSKU == "" {
+	// 	log.Warn().Msgf("Light SKU not specified: printing out all retrieved and closing in 20 seconds")
 
-	sendToGovee <- mustMarshal(GoveeStatusRequest{
-		Msg: GoveeStatusRequestMsg{
-			Cmd: "devStatus",
-		},
-	})
+	// 	go func() {
+	// 		for msg := range receiveFromGovee {
+	// 			fmt.Println(msg)
+	// 			// log.Info().Msgf("IP: %s <-> MAC: %s <-> SKU: %s", msg.Msg.Data.IP, msg.Msg.Data.Device, msg.Msg.Data.SKU)
+	// 		}
+	// 	}()
+	// 	time.Sleep(20 * time.Second)
+	// 	return
+	// }
 
-	go listenFromHueDevice(ctx, *bridgeIP, *bridgeUsername, sendToGovee, goveeConnection)
-	connectToGoveeDeviceAndForward(ctx, *chosenSKU, receiveFromGovee, sendToGovee)
+	// sendToGovee := make(chan []byte, 10)
+
+	// sendToGovee <- mustMarshal(GoveeStatusRequest{
+	// 	Msg: GoveeStatusRequestMsg{
+	// 		Cmd: "devStatus",
+	// 	},
+	// })
+
+	// go listenFromHueDevice(ctx, *bridgeIP, *bridgeUsername, sendToGovee, goveeConnection)
+	// connectToGoveeDeviceAndForward(ctx, *chosenSKU, receiveFromGovee, sendToGovee)
+
+	wg.Wait()
 }
 
 func listenFromHueDevice(ctx context.Context, bridgeIP string, bridgeUsername string, sendToGovee chan []byte, sender GoveeCommandSender) {
