@@ -60,7 +60,7 @@ func (h *HueConnection) Start(ctx context.Context, configuration Configuration, 
 
 func (h *HueConnection) pollState(ctx context.Context, configuration Configuration, commandSender GoveeCommandSender) {
 	for {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 
 		select {
 		case <-ctx.Done():
