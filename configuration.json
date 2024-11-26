@@ -6,12 +6,16 @@
             "trigger": "hue tap dial button press",
             "dial_name": "Hue tap dial switch 6",
             "hue_tap_dial_buttons": [
-                1,
-                2
+                1002,
+                2002
             ],
             "govee_actions": [
                 {
                     "device": "33:1E:D6:38:32:31:2A:3A",
+                    "action": "turn on"
+                },
+                {
+                    "device": "0C:D6:C8:6B:82:C6:2A:7B",
                     "action": "turn on"
                 }
             ]
@@ -20,13 +24,91 @@
             "trigger": "hue tap dial button press",
             "dial_name": "Hue tap dial switch 6",
             "hue_tap_dial_buttons": [
-                3,
-                4
+                3002,
+                4002
             ],
             "govee_actions": [
                 {
                     "device": "33:1E:D6:38:32:31:2A:3A",
                     "action": "turn off"
+                },
+                {
+                    "device": "0C:D6:C8:6B:82:C6:2A:7B",
+                    "action": "turn off"
+                }
+            ]
+        },
+        {
+            "name": "Turn off everything on long pressing buttons 3 and 4",
+            "trigger": "hue tap dial button press",
+            "dial_name": "Hue tap dial switch 6",
+            "hue_tap_dial_buttons": [
+                3003,
+                4003
+            ],
+            "govee_actions": [
+                {
+                    "_friendly_device_name": "Floor Lamp Basic",
+                    "device": "33:1E:D6:38:32:31:2A:3A",
+                    "action": "turn off"
+                },
+                {
+                    "_friendly_device_name": "Floor Lamp Basic 2",
+                    "device": "0C:D6:C8:6B:82:C6:2A:7B",
+                    "action": "turn off"
+                },
+                {
+                    "_friendly_device_name": "Floor Lamp Basic 3",
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "action": "turn off"
+                }
+            ]
+        },
+        {
+            "trigger": "hue tap dial button press",
+            "dial_name": "Hue tap dial switch 2",
+            "hue_tap_dial_buttons": [
+                1002,
+                2002,
+                3002
+            ],
+            "govee_actions": [
+                {
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "action": "turn on"
+                }
+            ]
+        },
+        {
+            "trigger": "hue tap dial button press",
+            "dial_name": "Hue tap dial switch 2",
+            "hue_tap_dial_buttons": [
+                1003,
+                2003,
+                3003
+            ],
+            "govee_actions": [
+                {
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "action": "turn off"
+                }
+            ]
+        },
+        {
+            "trigger": "hue light sync",
+            "light_name": "Hue Play soggiorno 1",
+            "govee_actions": [
+                {
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "sync_value": "brightness",
+                    "brightness_range": [
+                        -10,
+                        80
+                    ]
+                },
+                {
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "sync_value": "on-off"
                 }
             ]
         }

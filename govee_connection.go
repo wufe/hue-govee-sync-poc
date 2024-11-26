@@ -47,7 +47,7 @@ func (c *GoveeConnection) SendMsg(device string, data []byte) error {
 	c.goveeDevicesOfInterestMutex.Lock()
 	defer c.goveeDevicesOfInterestMutex.Unlock()
 	deviceRegistered, ok := c.goveeDevices[device]
-	if !ok {
+	if !ok || deviceRegistered == nil {
 		return fmt.Errorf("device not found")
 	}
 	return deviceRegistered.Send(data)

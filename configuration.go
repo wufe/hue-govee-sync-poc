@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -73,7 +74,7 @@ func (c *Configuration) GetRequiredHueDials() []string {
 func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(dialName string, buttonPressed int) []GoveeMessage {
 	var messages []GoveeMessage
 	for _, action := range c.Actions {
-		if action.Trigger == ActionTriggerHueTapDialButtonPress {
+		if action.Trigger == ActionTriggerHueTapDialButtonPress && action.DialName == dialName {
 			if slices.Contains(action.HueTapDialButtons, buttonPressed) {
 				for _, goveeAction := range action.GoveeActions {
 					var message []byte
@@ -108,6 +109,124 @@ func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(dialName 
 				}
 			}
 
+		}
+	}
+	return messages
+}
+
+func (c *Configuration) IsLightRequired(lightName string) bool {
+	for _, action := range c.Actions {
+		if action.Trigger == ActionTriggerHueLightSync && action.LightName == lightName {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName string, on bool) []GoveeMessage {
+	var messages []GoveeMessage
+	for _, action := range c.Actions {
+		if action.Trigger == ActionTriggerHueLightSync && action.LightName == lightName {
+			for _, goveeAction := range action.GoveeActions {
+				var message []byte
+				switch goveeAction.SyncValue {
+				case LightSyncValueOnOff:
+					if on {
+						message = mustMarshal(GoveeTurn{
+							Msg: GoveeTurnMsg{
+								Cmd: "turn",
+								Data: GoveeTurnMsgData{
+									Value: 1,
+								},
+							},
+						})
+					} else {
+						message = mustMarshal(GoveeTurn{
+							Msg: GoveeTurnMsg{
+								Cmd: "turn",
+								Data: GoveeTurnMsgData{
+									Value: 0,
+								},
+							},
+						})
+					}
+				}
+				if message != nil {
+					messages = append(messages, GoveeMessage{
+						Device: goveeAction.Device,
+						Data:   message,
+					})
+				}
+			}
+		}
+	}
+	return messages
+}
+
+func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightName string, brightness int) []GoveeMessage {
+	var messages []GoveeMessage
+	for _, action := range c.Actions {
+		if action.Trigger == ActionTriggerHueLightSync && action.LightName == lightName {
+			for _, goveeAction := range action.GoveeActions {
+				var message []byte
+				switch goveeAction.SyncValue {
+				case LightSyncValueBrightness:
+					if len(goveeAction.BrightnessRange) == 2 {
+						brightnessRangeDelta := goveeAction.BrightnessRange[1] - goveeAction.BrightnessRange[0]
+						brightnessPercentageDelta := float64(brightnessRangeDelta) * (float64(brightness) / 100)
+						brightness = int(float64(goveeAction.BrightnessRange[0]) + brightnessPercentageDelta)
+						brightness = int(math.Min(math.Max(float64(brightness), 0), 100))
+					}
+					message = mustMarshal(GoveeBrightnessRequest{
+						Msg: GoveeBrightnessRequestMsg{
+							Cmd: "brightness",
+							Data: GoveeBrightnessRequestMsgData{
+								Value: brightness,
+							},
+						},
+					})
+				}
+				if message != nil {
+					messages = append(messages, GoveeMessage{
+						Device: goveeAction.Device,
+						Data:   message,
+					})
+				}
+			}
+		}
+	}
+	return messages
+}
+
+func (c *Configuration) GetMessagesToDispatchOnHueLightColorChange(lightName string, r, g, b uint8) []GoveeMessage {
+	var messages []GoveeMessage
+	for _, action := range c.Actions {
+		if action.Trigger == ActionTriggerHueLightSync && action.LightName == lightName {
+			for _, goveeAction := range action.GoveeActions {
+				var message []byte
+				switch goveeAction.SyncValue {
+				case LightSyncValueColor:
+					message = mustMarshal(GoveeColorRequest{
+						Msg: GoveeColorRequestMsg{
+							Cmd: "colorwc",
+							Data: GoveeColorRequestMsgData{
+								Color: GoveeColorRequestMsgDataColor{
+									R: int(r),
+									G: int(g),
+									B: int(b),
+								},
+							},
+						},
+					})
+				}
+				if message != nil {
+					messages = append(messages, GoveeMessage{
+						Device: goveeAction.Device,
+						Data:   message,
+					})
+				}
+			}
 		}
 	}
 	return messages

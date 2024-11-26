@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -23,6 +24,8 @@ type HueConnection struct {
 	dialRotaries         map[string]huego.Sensor
 	dialRotariesMutex    struct{ sync.RWMutex }
 	dialRotariesStatuses map[string]DialRotaryStatus
+
+	lightsStatuses map[string]LightStatus
 }
 
 func NewHueConnection(
@@ -35,6 +38,8 @@ func NewHueConnection(
 
 		dialRotaries:         make(map[string]huego.Sensor),
 		dialRotariesStatuses: make(map[string]DialRotaryStatus),
+
+		lightsStatuses: make(map[string]LightStatus),
 
 		bridgeIP:       bridgeIP,
 		bridgeUsername: bridgeUsername,
@@ -55,6 +60,8 @@ func (h *HueConnection) Start(ctx context.Context, configuration Configuration, 
 
 func (h *HueConnection) pollState(ctx context.Context, configuration Configuration, commandSender GoveeCommandSender) {
 	for {
+		time.Sleep(100 * time.Millisecond)
+
 		select {
 		case <-ctx.Done():
 			return
@@ -106,20 +113,9 @@ func (h *HueConnection) pollState(ctx context.Context, configuration Configurati
 						dialStatus.buttonEvent = button
 						h.dialsStatuses[name] = dialStatus
 
-						log.Debug().Msgf("Button %d pressed on dial [%s]", int(dialStatus.buttonEvent), dial.Name)
+						log.Debug().Msgf("Button [%d] pressed on dial [%s]", int(dialStatus.buttonEvent), dial.Name)
 
-						buttonPressed := 0
-
-						switch dialStatus.buttonEvent {
-						case 1002:
-							buttonPressed = 1
-						case 2002:
-							buttonPressed = 2
-						case 3002:
-							buttonPressed = 3
-						case 4002:
-							buttonPressed = 4
-						}
+						buttonPressed := int(dialStatus.buttonEvent)
 
 						messages := configuration.GetMessagesToDispatchOnHueTapDialButtonPressed(dial.Name, buttonPressed)
 						for _, message := range messages {
@@ -127,29 +123,100 @@ func (h *HueConnection) pollState(ctx context.Context, configuration Configurati
 								log.Err(err).Msg("error sending message")
 							}
 						}
-
 					}
 				}
+			}
 
+			lights := fullBridgeState["lights"].(map[string]interface{})
+
+			for _, rawLightValue := range lights {
+				light := rawLightValue.(map[string]interface{})
+
+				rawName := light["name"]
+				name := rawName.(string)
+
+				required := configuration.IsLightRequired(name)
+
+				if required {
+					lightStatus := h.lightsStatuses[name]
+
+					lightState := light["state"].(map[string]interface{})
+
+					on := lightState["on"].(bool)
+					rawBrightness := lightState["bri"].(float64)
+					brightness := int(math.Max(math.Min((rawBrightness/255)*100, 100), 0))
+					xy := lightState["xy"].([]interface{})
+					x := xy[0].(float64)
+					y := xy[1].(float64)
+
+					var messages []GoveeMessage
+
+					if lightStatus.lastUpdate == nil {
+						r, g, b := xyToRGB(x, y, rawBrightness)
+
+						log.Debug().Msgf("Light [%s] state changed to [on: %v, bri: %d, xy:<%f,%f>, rgb:<%d,%d,%d>]", name, on, brightness, x, y, r, g, b)
+						lightStatus.on = on
+						lightStatus.brightness = brightness
+						lightStatus.x = x
+						lightStatus.y = y
+						now := time.Now()
+						lightStatus.lastUpdate = &now
+
+						messages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
+						messages = append(messages, configuration.GetMessagesToDispatchOnHueLightColorChange(name, r, g, b)...)
+					} else if lightStatus.on != on {
+						log.Debug().Msgf("Light [%s] state changed to [on: %v]", name, on)
+						lightStatus.on = on
+						now := time.Now()
+						lightStatus.lastUpdate = &now
+
+						messages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
+					} else if lightStatus.brightness != brightness {
+						log.Debug().Msgf("Light [%s] state changed to [bri: %d]", name, brightness)
+						lightStatus.brightness = brightness
+						now := time.Now()
+						lightStatus.lastUpdate = &now
+
+						messages = configuration.GetMessagesToDispatchOnHueLightBrightnessChange(name, brightness)
+					} else if lightStatus.x != x || lightStatus.y != y {
+						r, g, b := xyToRGB(x, y, rawBrightness)
+
+						log.Debug().Msgf("Light [%s] state changed to [xy:<%f,%f>, rgb:<%d,%d,%d>]", name, x, y, r, g, b)
+						lightStatus.x = x
+						lightStatus.y = y
+						now := time.Now()
+						lightStatus.lastUpdate = &now
+
+						messages = configuration.GetMessagesToDispatchOnHueLightColorChange(name, r, g, b)
+					}
+
+					h.lightsStatuses[name] = lightStatus
+
+					for _, message := range messages {
+						if err := commandSender.SendMsg(message.Device, message.Data); err != nil {
+							log.Err(err).Msg("error sending message")
+						}
+					}
+				}
 			}
 		}
 	}
 }
 
 func (h *HueConnection) periodicallyPollSensors(ctx context.Context, configuration Configuration) {
-	h.retrieveSensors(configuration)
+	h.retrieveSensors(true, configuration)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(5 * time.Second):
-			h.retrieveSensors(configuration)
+			h.retrieveSensors(false, configuration)
 		}
 	}
 }
 
-func (h *HueConnection) retrieveSensors(configuration Configuration) {
+func (h *HueConnection) retrieveSensors(firstLook bool, configuration Configuration) {
 	sensors, err := h.bridge.GetSensors()
 	if err != nil {
 		log.Error().Err(err).Msg("error retrieving sensors")
@@ -167,6 +234,9 @@ func (h *HueConnection) retrieveSensors(configuration Configuration) {
 	dialRotariesLocked := false
 
 	for _, sensor := range sensors {
+		if firstLook {
+			log.Debug().Msgf("Found Hue sensor [%s]", sensor.Name)
+		}
 		if _, isRequired := requiredSensors[sensor.Name]; !isRequired {
 			continue
 		}
