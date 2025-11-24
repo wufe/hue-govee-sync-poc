@@ -14,9 +14,10 @@ import (
 )
 
 type Configuration struct {
-	BridgeIP string                `json:"bridge_ip"`
-	AppName  string                `json:"app_name"`
-	Actions  []ConfigurationAction `json:"actions"`
+	BridgeIP  string                                  `json:"bridge_ip"`
+	AppName   string                                  `json:"app_name"`
+	Actions   []ConfigurationAction                   `json:"actions"`
+	Switchbot map[string]SwitchbotDeviceConfiguration `json:"switchbot"`
 }
 
 func NewConfiguration() Configuration {
@@ -139,9 +140,10 @@ func (c *Configuration) IsLightRequired(lightName string) bool {
 	return false
 }
 
-func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName string, on bool) ([]GoveeMessage, []TwinklyMessage) {
+func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName string, on bool) ([]GoveeMessage, []TwinklyMessage, []SwitchbotMessage) {
 	var goveeMessages []GoveeMessage
 	var twinklyMessages []TwinklyMessage
+	var switchbotMessages []SwitchbotMessage
 	for _, action := range c.Actions {
 		if action.Trigger == ActionTriggerHueLightSync && action.LightName == lightName {
 			for _, goveeAction := range action.GoveeActions {
@@ -215,13 +217,36 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName str
 					twinklyMessages = append(twinklyMessages, message)
 				}
 			}
+			for _, switchbotAction := range action.SwitchbotActions {
+				message := NewSwitchbotMessageForDevice(switchbotAction.Device)
+				switch switchbotAction.SyncValue {
+				case LightSyncValueOnOff:
+					if on {
+						message = message.TurnOn()
+					} else {
+						message = message.TurnOff()
+					}
+				case LightSyncValueOn:
+					if on {
+						message = message.TurnOn()
+					}
+				case LightSyncValueOff:
+					if !on {
+						message = message.TurnOff()
+					}
+				}
+				if !message.IsEmpty() {
+					switchbotMessages = append(switchbotMessages, message)
+				}
+			}
 		}
 	}
-	return goveeMessages, twinklyMessages
+	return goveeMessages, twinklyMessages, switchbotMessages
 }
 
-func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightName string, brightness int) []GoveeMessage {
-	var messages []GoveeMessage
+func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightName string, brightness int) ([]GoveeMessage, []SwitchbotMessage) {
+	var goveeMessages []GoveeMessage
+	var switchbotMessages []SwitchbotMessage
 	for _, action := range c.Actions {
 		if action.Trigger == ActionTriggerHueLightSync && action.LightName == lightName {
 			for _, goveeAction := range action.GoveeActions {
@@ -230,10 +255,11 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightNam
 				case LightSyncValueBrightness:
 					brightnessToSend := brightness
 					if len(goveeAction.BrightnessRange) == 2 {
-						brightnessRangeDelta := goveeAction.BrightnessRange[1] - goveeAction.BrightnessRange[0]
-						brightnessPercentageDelta := float64(brightnessRangeDelta) * (float64(brightness) / 100)
-						brightnessToSend = int(float64(goveeAction.BrightnessRange[0]) + brightnessPercentageDelta)
-						brightnessToSend = int(math.Min(math.Max(float64(brightnessToSend), 0), 100))
+						// brightnessRangeDelta := goveeAction.BrightnessRange[1] - goveeAction.BrightnessRange[0]
+						// brightnessPercentageDelta := float64(brightnessRangeDelta) * (float64(brightness) / 100)
+						// brightnessToSend = int(float64(goveeAction.BrightnessRange[0]) + brightnessPercentageDelta)
+						// brightnessToSend = int(math.Min(math.Max(float64(brightnessToSend), 0), 100))
+						brightnessToSend = getAdjustedBrightnessByRange(brightness, goveeAction.BrightnessRange)
 					}
 					message = mustMarshal(GoveeBrightnessRequest{
 						Msg: GoveeBrightnessRequestMsg{
@@ -245,15 +271,40 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightNam
 					})
 				}
 				if message != nil {
-					messages = append(messages, GoveeMessage{
+					goveeMessages = append(goveeMessages, GoveeMessage{
 						Device: goveeAction.Device,
 						Data:   message,
 					})
 				}
 			}
+			for _, switchbotAction := range action.SwitchbotActions {
+				message := NewSwitchbotMessageForDevice(switchbotAction.Device)
+				switch switchbotAction.SyncValue {
+				case LightSyncValueBrightness:
+					brightnessToSend := brightness
+					if len(switchbotAction.BrightnessRange) == 2 {
+						brightnessToSend = getAdjustedBrightnessByRange(brightness, switchbotAction.BrightnessRange)
+					}
+					message = message.SetBrightness(brightnessToSend)
+				}
+				if !message.IsEmpty() {
+					switchbotMessages = append(switchbotMessages, message)
+				}
+			}
 		}
 	}
-	return messages
+	return goveeMessages, switchbotMessages
+}
+
+func getAdjustedBrightnessByRange(inBrightness int, brightnessRange []int) int {
+	if len(brightnessRange) != 2 {
+		return inBrightness
+	}
+	brightnessRangeDelta := brightnessRange[1] - brightnessRange[0]
+	brightnessPercentageDelta := float64(brightnessRangeDelta) * (float64(inBrightness) / 100)
+	adjustedBrightness := int(float64(brightnessRange[0]) + brightnessPercentageDelta)
+	adjustedBrightness = int(math.Min(math.Max(float64(adjustedBrightness), 0), 100))
+	return adjustedBrightness
 }
 
 func (c *Configuration) GetMessagesToDispatchOnHueLightColorChange(lightName string, r, g, b uint8) []GoveeMessage {

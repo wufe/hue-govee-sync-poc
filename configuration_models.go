@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type ActionTrigger string
 
 const (
@@ -21,6 +23,13 @@ const (
 	TwinklyActionTurnOff TwinklyAction = "turn off"
 )
 
+type SwitchbotAction string
+
+const (
+	SwitchbotActionTurnOn  SwitchbotAction = "turn on"
+	SwitchbotActionTurnOff SwitchbotAction = "turn off"
+)
+
 type LightSyncValue string
 
 const (
@@ -39,12 +48,13 @@ const (
 )
 
 type ConfigurationAction struct {
-	Trigger           ActionTrigger                    `json:"trigger"`
-	DialName          string                           `json:"dial_name"`
-	HueTapDialButtons []int                            `json:"hue_tap_dial_buttons"`
-	GoveeActions      []ConfigurationActionGoveeAction `json:"govee_actions"`
-	TwinklyActions    []ConfigurationTwinklyAction     `json:"twinkly_actions"`
-	LightName         string                           `json:"light_name"`
+	Trigger           ActionTrigger                        `json:"trigger"`
+	DialName          string                               `json:"dial_name"`
+	HueTapDialButtons []int                                `json:"hue_tap_dial_buttons"`
+	GoveeActions      []ConfigurationActionGoveeAction     `json:"govee_actions"`
+	TwinklyActions    []ConfigurationTwinklyAction         `json:"twinkly_actions"`
+	SwitchbotActions  []ConfigurationActionSwitchbotAction `json:"switchbot_actions"`
+	LightName         string                               `json:"light_name"`
 }
 
 type ConfigurationActionGoveeAction struct {
@@ -60,7 +70,61 @@ type ConfigurationTwinklyAction struct {
 	Action    TwinklyAction  `json:"action"`
 }
 
+type ConfigurationActionSwitchbotAction struct {
+	Device          string          `json:"device"` // Friendly name previously set in map key of <conf_root>->Switchbot
+	Action          SwitchbotAction `json:"action"`
+	SyncValue       LightSyncValue  `json:"sync_value"`
+	BrightnessRange []int           `json:"brightness_range"`
+}
+
 type GoveeMessage struct {
 	Device string
 	Data   []byte
+}
+
+type SwitchbotDeviceConfiguration struct {
+	DeviceID      string                              `json:"device_id"`
+	Authorization SwitchbotAuthorizationConfiguration `json:"authorization"`
+}
+
+type SwitchbotAuthorizationConfiguration struct {
+	Token string `json:"token"`
+}
+
+type SwitchbotMessage struct {
+	Device      string `json:"device"`
+	Command     string `json:"command"`
+	Parameter   string `json:"parameter"`
+	CommandType string `json:"commandType"`
+}
+
+func (m SwitchbotMessage) IsEmpty() bool {
+	return m.Command == ""
+}
+
+func NewSwitchbotMessageForDevice(device string) SwitchbotMessage {
+	return SwitchbotMessage{
+		Device: device,
+	}
+}
+
+func (m SwitchbotMessage) TurnOn() SwitchbotMessage {
+	m.Command = "turnOn"
+	m.Parameter = "default"
+	m.CommandType = "command"
+	return m
+}
+
+func (m SwitchbotMessage) TurnOff() SwitchbotMessage {
+	m.Command = "turnOff"
+	m.Parameter = "default"
+	m.CommandType = "command"
+	return m
+}
+
+func (m SwitchbotMessage) SetBrightness(brightness int) SwitchbotMessage {
+	m.Command = "setBrightness"
+	m.Parameter = fmt.Sprintf("%d", brightness)
+	m.CommandType = "command"
+	return m
 }

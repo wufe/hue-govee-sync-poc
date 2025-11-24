@@ -2,6 +2,14 @@
     "_start_cmd": "CGO_ENABLED=0 go run . -username bUyyAFv2eqfalt9VU1CBjNz-wr5IisSBJdwF4xY- -hue-bridge-ip 192.168.1.140 -twinkly-device-ip 192.168.1.110",
     "bridge_ip": "192.168.1.140",
     "app_name": "hue-govee synchronizer",
+    "switchbot": {
+        "Piantana salone": {
+            "device_id": "A84674452792",
+            "authorization": {
+                "token": "06b6dcdb0dcdc720820f77fc19279169ace403a7ea501ba7f1eeb2d0266ef28f2e848bbb830d5823ba0b05d516d068bd"
+            }
+        }
+    },
     "actions": [
         {
             "_friendly_device_name": "Dial Camera",
@@ -149,6 +157,20 @@
                 {
                     "sync_value": "on",
                     "_sync_value": "on-off"
+                }
+            ],
+            "switchbot_actions": [
+                {
+                    "device": "Piantana salone",
+                    "sync_value": "on-off"
+                },
+                {
+                    "device": "Piantana salone",
+                    "sync_value": "brightness",
+                    "brightness_range": [
+                        0,
+                        70
+                    ]
                 }
             ]
         },

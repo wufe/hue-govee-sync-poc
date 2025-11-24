@@ -75,6 +75,8 @@ func main() {
 
 	goveeConnection := NewGoveeConnection(configuration)
 
+	switchbotConnection := NewSwitchbotConnection(configuration)
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -106,7 +108,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		hueConnection.Start(ctx, configuration, goveeConnection, twinklyConnection)
+		hueConnection.Start(ctx, configuration, goveeConnection, twinklyConnection, switchbotConnection)
 	}()
 
 	wg.Wait()
