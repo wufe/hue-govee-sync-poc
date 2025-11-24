@@ -71,8 +71,9 @@ func (c *Configuration) GetRequiredHueDials() []string {
 	return dials
 }
 
-func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(dialName string, buttonPressed int) []GoveeMessage {
-	var messages []GoveeMessage
+func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(dialName string, buttonPressed int) ([]GoveeMessage, []TwinklyMessage) {
+	var goveeMessages []GoveeMessage
+	var twinklyMessages []TwinklyMessage
 	for _, action := range c.Actions {
 		if action.Trigger == ActionTriggerHueTapDialButtonPress && action.DialName == dialName {
 			if slices.Contains(action.HueTapDialButtons, buttonPressed) {
@@ -102,16 +103,30 @@ func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(dialName 
 						log.Err(err).Msgf("Error creating Govee message: %s", err)
 						continue
 					}
-					messages = append(messages, GoveeMessage{
+					goveeMessages = append(goveeMessages, GoveeMessage{
 						Device: goveeAction.Device,
 						Data:   message,
 					})
+				}
+				for _, twinklyAction := range action.TwinklyActions {
+					var message TwinklyMessage
+					switch twinklyAction.Action {
+					case TwinklyActionTurnOn:
+						message = TwinklyMessageOn
+					case TwinklyActionTurnOff:
+						message = TwinklyMessageOff
+					default:
+						err := fmt.Errorf("unknown Twinkly action: %s", twinklyAction.Action)
+						log.Err(err).Msgf("Error creating Twinkly message: %s", err)
+						continue
+					}
+					twinklyMessages = append(twinklyMessages, message)
 				}
 			}
 
 		}
 	}
-	return messages
+	return goveeMessages, twinklyMessages
 }
 
 func (c *Configuration) IsLightRequired(lightName string) bool {
@@ -124,14 +139,15 @@ func (c *Configuration) IsLightRequired(lightName string) bool {
 	return false
 }
 
-func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName string, on bool) []GoveeMessage {
-	var messages []GoveeMessage
+func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName string, on bool) ([]GoveeMessage, []TwinklyMessage) {
+	var goveeMessages []GoveeMessage
+	var twinklyMessages []TwinklyMessage
 	for _, action := range c.Actions {
 		if action.Trigger == ActionTriggerHueLightSync && action.LightName == lightName {
 			for _, goveeAction := range action.GoveeActions {
 				var message []byte
-				switch goveeAction.SyncValue {
-				case LightSyncValueOnOff:
+				switch {
+				case goveeAction.SyncValue == LightSyncValueOnOff:
 					if on {
 						message = mustMarshal(GoveeTurn{
 							Msg: GoveeTurnMsg{
@@ -151,17 +167,57 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName str
 							},
 						})
 					}
+				case goveeAction.SyncValue == LightSyncValueOn && on:
+					message = mustMarshal(GoveeTurn{
+						Msg: GoveeTurnMsg{
+							Cmd: "turn",
+							Data: GoveeTurnMsgData{
+								Value: 1,
+							},
+						},
+					})
+				case goveeAction.SyncValue == LightSyncValueOff && !on:
+					message = mustMarshal(GoveeTurn{
+						Msg: GoveeTurnMsg{
+							Cmd: "turn",
+							Data: GoveeTurnMsgData{
+								Value: 0,
+							},
+						},
+					})
 				}
 				if message != nil {
-					messages = append(messages, GoveeMessage{
+					goveeMessages = append(goveeMessages, GoveeMessage{
 						Device: goveeAction.Device,
 						Data:   message,
 					})
 				}
 			}
+			for _, twinklyAction := range action.TwinklyActions {
+				var message TwinklyMessage
+				switch twinklyAction.SyncValue {
+				case LightSyncValueOnOff:
+					if on {
+						message = TwinklyMessageOn
+					} else {
+						message = TwinklyMessageOff
+					}
+				case LightSyncValueOn:
+					if on {
+						message = TwinklyMessageOn
+					}
+				case LightSyncValueOff:
+					if !on {
+						message = TwinklyMessageOff
+					}
+				}
+				if message != "" {
+					twinklyMessages = append(twinklyMessages, message)
+				}
+			}
 		}
 	}
-	return messages
+	return goveeMessages, twinklyMessages
 }
 
 func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightName string, brightness int) []GoveeMessage {
@@ -172,17 +228,18 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightNam
 				var message []byte
 				switch goveeAction.SyncValue {
 				case LightSyncValueBrightness:
+					brightnessToSend := brightness
 					if len(goveeAction.BrightnessRange) == 2 {
 						brightnessRangeDelta := goveeAction.BrightnessRange[1] - goveeAction.BrightnessRange[0]
 						brightnessPercentageDelta := float64(brightnessRangeDelta) * (float64(brightness) / 100)
-						brightness = int(float64(goveeAction.BrightnessRange[0]) + brightnessPercentageDelta)
-						brightness = int(math.Min(math.Max(float64(brightness), 0), 100))
+						brightnessToSend = int(float64(goveeAction.BrightnessRange[0]) + brightnessPercentageDelta)
+						brightnessToSend = int(math.Min(math.Max(float64(brightnessToSend), 0), 100))
 					}
 					message = mustMarshal(GoveeBrightnessRequest{
 						Msg: GoveeBrightnessRequestMsg{
 							Cmd: "brightness",
 							Data: GoveeBrightnessRequestMsgData{
-								Value: brightness,
+								Value: brightnessToSend,
 							},
 						},
 					})

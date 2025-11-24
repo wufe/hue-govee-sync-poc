@@ -40,10 +40,11 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	// Get CLI param
-	bridgeIP := flag.String("bridge", "", "ip of the Philips Hue bridge")
+	bridgeIP := flag.String("hue-bridge-ip", "", "ip of the Philips Hue bridge")
 	bridgeUsername := flag.String("username", "", "username of the Philips Hue bridge")
 	listen := flag.Bool("listen", false, "listen to events from the Hue bridge")
 	dialName := flag.String("dial", "", "name of the dial to listen to")
+	twinklyIP := flag.String("twinkly-device-ip", "", "ip of the Twinkly device to sync")
 	flag.Parse()
 
 	if *listen {
@@ -55,6 +56,19 @@ func main() {
 	}
 
 	ctx := context.Background()
+
+	var twinklyConnection *TwinklyConnection
+
+	if *twinklyIP != "" {
+		twinklyConnection = NewTwinklyConnection(*twinklyIP)
+		if err := twinklyConnection.Login(ctx, *twinklyIP); err != nil {
+			panic(fmt.Errorf("error logging in to Twinkly device: %v", err))
+		}
+		log.Info().Msgf("Logged in to Twinkly device at %s", *twinklyIP)
+	} else {
+		twinklyConnection = NewNoopTwinklyConnection()
+	}
+
 	var wg sync.WaitGroup
 
 	configuration := NewConfiguration()
@@ -73,16 +87,26 @@ func main() {
 	}
 	defer multicastConn.Close()
 
-	if err := sendScanRequest(multicastConn); err != nil {
-		panic(err)
-	}
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := sendScanRequest(multicastConn); err != nil {
+					log.Err(err).Msgf("Error sending scan request: %s", err)
+				}
+				time.Sleep(30 * time.Second) // Wait 10 seconds before sending the next scan request
+			}
+		}
+	}()
 
 	hueConnection := NewHueConnection(*bridgeIP, *bridgeUsername)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		hueConnection.Start(ctx, configuration, goveeConnection)
+		hueConnection.Start(ctx, configuration, goveeConnection, twinklyConnection)
 	}()
 
 	wg.Wait()

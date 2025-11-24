@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 )
 
 type FoundGoveeDevice struct {
-	IP          string
-	SKU         string
-	Device      string
-	conn        net.Conn
-	connMutex   struct{ sync.Mutex }
-	channelOpen bool
-	sendChan    chan []byte
+	IP           string
+	SKU          string
+	Device       string
+	RegisteredAt time.Time
+	conn         net.Conn
+	connMutex    struct{ sync.Mutex }
+	channelOpen  bool
+	sendChan     chan []byte
 }
 
 type GoveeDeviceStatus struct {

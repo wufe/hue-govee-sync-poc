@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog/log"
 )
@@ -169,36 +170,43 @@ func (c *GoveeConnection) listenToUDPMessages(ctx context.Context, receiveFromGo
 
 				c.goveeDevicesOfInterestMutex.Lock()
 				previousGoveeDeviceRegistered, ok := c.goveeDevices[device]
-				if ok && previousGoveeDeviceRegistered != nil {
-					log.Info().Msgf(
-						"Device [%s - %s - %s] already registered: moving to [%s - %s - %s]",
-						previousGoveeDeviceRegistered.SKU, previousGoveeDeviceRegistered.IP, previousGoveeDeviceRegistered.Device,
-						sku, ip, device)
+				// if ok && previousGoveeDeviceRegistered != nil {
+				// 	if previousGoveeDeviceRegistered.SKU != sku ||
+				// 		previousGoveeDeviceRegistered.IP != ip {
+				// 		log.Info().Msgf(
+				// 			"Device [%s - %s - %s] already registered: moving to [%s - %s - %s]",
+				// 			previousGoveeDeviceRegistered.SKU, previousGoveeDeviceRegistered.IP, previousGoveeDeviceRegistered.Device,
+				// 			sku, ip, device)
 
-					// Close and cleanup connection
-					previousGoveeDeviceRegistered.connMutex.Lock()
-					previousGoveeDeviceRegistered.conn.Close()
-					previousGoveeDeviceRegistered.channelOpen = false
-					if previousGoveeDeviceRegistered.sendChan != nil {
-						close(previousGoveeDeviceRegistered.sendChan)
-					}
-					previousGoveeDeviceRegistered.connMutex.Unlock()
-				} else {
+				// 		// Close and cleanup connection
+				// 		previousGoveeDeviceRegistered.connMutex.Lock()
+				// 		previousGoveeDeviceRegistered.conn.Close()
+				// 		previousGoveeDeviceRegistered.channelOpen = false
+				// 		if previousGoveeDeviceRegistered.sendChan != nil {
+				// 			close(previousGoveeDeviceRegistered.sendChan)
+				// 		}
+				// 		previousGoveeDeviceRegistered.connMutex.Unlock()
+				// 	}
+				// } else {
+				// 	log.Info().Msgf("Found Govee device [%s - %s - %s]", sku, ip, device)
+				// }
+
+				if !ok || previousGoveeDeviceRegistered == nil {
 					log.Info().Msgf("Found Govee device [%s - %s - %s]", sku, ip, device)
-				}
 
-				// Register the device
-				deviceRegistered := &FoundGoveeDevice{
-					IP:     ip,
-					SKU:    sku,
-					Device: device,
+					// Register the device
+					deviceRegistered := &FoundGoveeDevice{
+						IP:           ip,
+						SKU:          sku,
+						Device:       device,
+						RegisteredAt: time.Now(),
+					}
+					c.goveeDevices[device] = deviceRegistered
+
+					// Try to dial the device
+					go tryDialGoveeDevice(ctx, deviceRegistered)
 				}
-				c.goveeDevices[device] = deviceRegistered
 				c.goveeDevicesOfInterestMutex.Unlock()
-
-				// Try to dial the device
-				go tryDialGoveeDevice(ctx, deviceRegistered)
-
 			case "devStatus":
 				data := response.Msg.Data.(map[string]float64)
 				brightness := data["brightness"]

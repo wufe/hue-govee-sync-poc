@@ -46,7 +46,7 @@ func NewHueConnection(
 	}
 }
 
-func (h *HueConnection) Start(ctx context.Context, configuration Configuration, commandSender GoveeCommandSender) {
+func (h *HueConnection) Start(ctx context.Context, configuration Configuration, goveeCommandSender GoveeCommandSender, twinklyCommandSender TwinklyCommandSender) {
 	// TODO: Implement action in case the bridge IP is empty
 	// TODO: Implement action in case the bridge username is empty
 
@@ -55,10 +55,10 @@ func (h *HueConnection) Start(ctx context.Context, configuration Configuration, 
 
 	go h.periodicallyPollSensors(ctx, configuration)
 
-	h.pollState(ctx, configuration, commandSender)
+	h.pollState(ctx, configuration, goveeCommandSender, twinklyCommandSender)
 }
 
-func (h *HueConnection) pollState(ctx context.Context, configuration Configuration, commandSender GoveeCommandSender) {
+func (h *HueConnection) pollState(ctx context.Context, configuration Configuration, goveeCommandSender GoveeCommandSender, twinklyCommandSender TwinklyCommandSender) {
 	for {
 		time.Sleep(200 * time.Millisecond)
 
@@ -91,10 +91,17 @@ func (h *HueConnection) pollState(ctx context.Context, configuration Configurati
 
 						dialState := sensorValue["state"].(map[string]interface{})
 
-						lastUpdated, err := time.Parse("2006-01-02T15:04:05", dialState["lastupdated"].(string))
-						if err != nil {
-							log.Err(err).Msg("error parsing time")
+						lastUpdatedState := dialState["lastupdated"].(string)
+						var lastUpdated time.Time
+						if lastUpdatedState == "none" {
+							lastUpdated = time.Time{}
 							continue
+						} else {
+							lastUpdated, err = time.Parse("2006-01-02T15:04:05", lastUpdatedState)
+							if err != nil {
+								log.Err(err).Msgf("error parsing time on dial [%s]", dial.Name)
+								continue
+							}
 						}
 
 						button := dialState["buttonevent"].(float64)
@@ -117,10 +124,17 @@ func (h *HueConnection) pollState(ctx context.Context, configuration Configurati
 
 						buttonPressed := int(dialStatus.buttonEvent)
 
-						messages := configuration.GetMessagesToDispatchOnHueTapDialButtonPressed(dial.Name, buttonPressed)
-						for _, message := range messages {
-							if err := commandSender.SendMsg(message.Device, message.Data); err != nil {
+						goveeMessages, twinklyMessages := configuration.GetMessagesToDispatchOnHueTapDialButtonPressed(dial.Name, buttonPressed)
+
+						for _, message := range goveeMessages {
+							if err := goveeCommandSender.SendMsg(message.Device, message.Data); err != nil {
 								log.Err(err).Msg("error sending message")
+							}
+						}
+
+						for _, message := range twinklyMessages {
+							if err := twinklyCommandSender.SendMsg(message); err != nil {
+								log.Err(err).Msg("error sending twinkly message")
 							}
 						}
 					}
@@ -149,7 +163,8 @@ func (h *HueConnection) pollState(ctx context.Context, configuration Configurati
 					x := xy[0].(float64)
 					y := xy[1].(float64)
 
-					var messages []GoveeMessage
+					var goveeMessages []GoveeMessage
+					var twinklyMessages []TwinklyMessage
 
 					if lightStatus.lastUpdate == nil {
 						r, g, b := xyToRGB(x, y, rawBrightness)
@@ -162,22 +177,22 @@ func (h *HueConnection) pollState(ctx context.Context, configuration Configurati
 						now := time.Now()
 						lightStatus.lastUpdate = &now
 
-						messages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
-						messages = append(messages, configuration.GetMessagesToDispatchOnHueLightColorChange(name, r, g, b)...)
+						goveeMessages, twinklyMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
+						goveeMessages = append(goveeMessages, configuration.GetMessagesToDispatchOnHueLightColorChange(name, r, g, b)...)
 					} else if lightStatus.on != on {
 						log.Debug().Msgf("Light [%s] state changed to [on: %v]", name, on)
 						lightStatus.on = on
 						now := time.Now()
 						lightStatus.lastUpdate = &now
 
-						messages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
+						goveeMessages, twinklyMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
 					} else if lightStatus.brightness != brightness {
 						log.Debug().Msgf("Light [%s] state changed to [bri: %d]", name, brightness)
 						lightStatus.brightness = brightness
 						now := time.Now()
 						lightStatus.lastUpdate = &now
 
-						messages = configuration.GetMessagesToDispatchOnHueLightBrightnessChange(name, brightness)
+						goveeMessages = configuration.GetMessagesToDispatchOnHueLightBrightnessChange(name, brightness)
 					} else if lightStatus.x != x || lightStatus.y != y {
 						r, g, b := xyToRGB(x, y, rawBrightness)
 
@@ -187,14 +202,20 @@ func (h *HueConnection) pollState(ctx context.Context, configuration Configurati
 						now := time.Now()
 						lightStatus.lastUpdate = &now
 
-						messages = configuration.GetMessagesToDispatchOnHueLightColorChange(name, r, g, b)
+						goveeMessages = configuration.GetMessagesToDispatchOnHueLightColorChange(name, r, g, b)
 					}
 
 					h.lightsStatuses[name] = lightStatus
 
-					for _, message := range messages {
-						if err := commandSender.SendMsg(message.Device, message.Data); err != nil {
-							log.Err(err).Msg("error sending message")
+					for _, message := range goveeMessages {
+						if err := goveeCommandSender.SendMsg(message.Device, message.Data); err != nil {
+							log.Err(err).Msg("error sending govee message")
+						}
+					}
+
+					for _, message := range twinklyMessages {
+						if err := twinklyCommandSender.SendMsg(message); err != nil {
+							log.Err(err).Msg("error sending twinkly message")
 						}
 					}
 				}

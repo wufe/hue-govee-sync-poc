@@ -6,6 +6,7 @@ require (
 	github.com/amimof/huego v1.2.1
 	github.com/rs/zerolog v1.31.0
 	github.com/sanity-io/litter v1.5.5
+	go.uber.org/atomic v1.11.0
 )
 
 require (
