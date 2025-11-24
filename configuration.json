@@ -177,7 +177,11 @@
                         70
                     ]
                 }
-            ],
+            ]
+        },
+        {
+            "trigger": "hue light sync",
+            "light_name": "Ghirlanda TV",
             "wled_actions": [
                 {
                     "device": "Fairy lights mobile ingresso",

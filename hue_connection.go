@@ -171,11 +171,25 @@ func (h *HueConnection) pollState(
 					lightState := light["state"].(map[string]interface{})
 
 					on := lightState["on"].(bool)
-					rawBrightness := lightState["bri"].(float64)
-					brightness := int(math.Max(math.Min((rawBrightness/255)*100, 100), 0))
-					xy := lightState["xy"].([]interface{})
-					x := xy[0].(float64)
-					y := xy[1].(float64)
+
+					var rawBrightness float64 = 255
+					var brightness int = 100
+					brightnessAvailable := lightState["bri"] != nil
+
+					if brightnessAvailable {
+						rawBrightness = lightState["bri"].(float64)
+						brightness = int(math.Max(math.Min((rawBrightness/255)*100, 100), 0))
+					}
+
+					var x float64 = 0
+					var y float64 = 0
+					colorAvailable := lightState["xy"] != nil
+
+					if colorAvailable {
+						xy := lightState["xy"].([]interface{})
+						x = xy[0].(float64)
+						y = xy[1].(float64)
+					}
 
 					var goveeMessages []GoveeMessage
 					var twinklyMessages []TwinklyMessage
