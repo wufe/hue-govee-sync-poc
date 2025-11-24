@@ -30,6 +30,13 @@ const (
 	SwitchbotActionTurnOff SwitchbotAction = "turn off"
 )
 
+type WledAction string
+
+const (
+	WledActionTurnOn  WledAction = "turn on"
+	WledActionTurnOff WledAction = "turn off"
+)
+
 type LightSyncValue string
 
 const (
@@ -54,6 +61,7 @@ type ConfigurationAction struct {
 	GoveeActions      []ConfigurationActionGoveeAction     `json:"govee_actions"`
 	TwinklyActions    []ConfigurationTwinklyAction         `json:"twinkly_actions"`
 	SwitchbotActions  []ConfigurationActionSwitchbotAction `json:"switchbot_actions"`
+	WledActions       []ConfigurationActionWledAction      `json:"wled_actions"`
 	LightName         string                               `json:"light_name"`
 }
 
@@ -75,6 +83,13 @@ type ConfigurationActionSwitchbotAction struct {
 	Action          SwitchbotAction `json:"action"`
 	SyncValue       LightSyncValue  `json:"sync_value"`
 	BrightnessRange []int           `json:"brightness_range"`
+}
+
+type ConfigurationActionWledAction struct {
+	Device          string         `json:"device"`
+	Action          WledAction     `json:"action"`
+	SyncValue       LightSyncValue `json:"sync_value"`
+	BrightnessRange []int          `json:"brightness_range"`
 }
 
 type GoveeMessage struct {
@@ -126,5 +141,41 @@ func (m SwitchbotMessage) SetBrightness(brightness int) SwitchbotMessage {
 	m.Command = "setBrightness"
 	m.Parameter = fmt.Sprintf("%d", brightness)
 	m.CommandType = "command"
+	return m
+}
+
+type WledDeviceConfiguration struct {
+	Device string `json:"device"`
+	IP     string `json:"ip"`
+}
+
+type WledMessage struct {
+	Device string `json:"device"`
+	Body   []byte `json:"body"`
+}
+
+func NewWledMessageForDevice(device string) WledMessage {
+	return WledMessage{
+		Device: device,
+	}
+}
+
+func (m WledMessage) IsEmpty() bool {
+	return m.Body == nil
+}
+
+func (m WledMessage) TurnOn() WledMessage {
+	m.Body = []byte(`{"on":true}`)
+	return m
+}
+
+func (m WledMessage) TurnOff() WledMessage {
+	m.Body = []byte(`{"on":false}`)
+	return m
+}
+
+// SetBrightness sets the brightness (0-255) in the WLED message
+func (m WledMessage) SetBrightness(brightness int) WledMessage {
+	m.Body = []byte(fmt.Sprintf(`{"bri":%d}`, brightness))
 	return m
 }

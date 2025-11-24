@@ -9,7 +9,7 @@ import (
 )
 
 type SwitchbotConnection struct {
-	devices map[string]SwitchbotDeviceConfiguration
+	devices map[string]SwitchbotDeviceConfiguration // Key is friendly device name
 }
 
 type SwitchbotCommandSender interface {

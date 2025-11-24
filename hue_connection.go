@@ -52,6 +52,7 @@ func (h *HueConnection) Start(
 	goveeCommandSender GoveeCommandSender,
 	twinklyCommandSender TwinklyCommandSender,
 	switchbotCommandSender SwitchbotCommandSender,
+	wledCommandSender WledCommandSender,
 ) {
 	// TODO: Implement action in case the bridge IP is empty
 	// TODO: Implement action in case the bridge username is empty
@@ -61,7 +62,7 @@ func (h *HueConnection) Start(
 
 	go h.periodicallyPollSensors(ctx, configuration)
 
-	h.pollState(ctx, configuration, goveeCommandSender, twinklyCommandSender, switchbotCommandSender)
+	h.pollState(ctx, configuration, goveeCommandSender, twinklyCommandSender, switchbotCommandSender, wledCommandSender)
 }
 
 func (h *HueConnection) pollState(
@@ -70,6 +71,7 @@ func (h *HueConnection) pollState(
 	goveeCommandSender GoveeCommandSender,
 	twinklyCommandSender TwinklyCommandSender,
 	switchbotCommandSender SwitchbotCommandSender,
+	wledCommandSender WledCommandSender,
 ) {
 	for {
 		time.Sleep(200 * time.Millisecond)
@@ -178,6 +180,7 @@ func (h *HueConnection) pollState(
 					var goveeMessages []GoveeMessage
 					var twinklyMessages []TwinklyMessage
 					var switchbotMessages []SwitchbotMessage
+					var wledMessages []WledMessage
 
 					if lightStatus.lastUpdate == nil {
 						r, g, b := xyToRGB(x, y, rawBrightness)
@@ -190,7 +193,7 @@ func (h *HueConnection) pollState(
 						now := time.Now()
 						lightStatus.lastUpdate = &now
 
-						goveeMessages, twinklyMessages, switchbotMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
+						goveeMessages, twinklyMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
 						goveeMessages = append(goveeMessages, configuration.GetMessagesToDispatchOnHueLightColorChange(name, r, g, b)...)
 					} else if lightStatus.on != on {
 						log.Debug().Msgf("Light [%s] state changed to [on: %v]", name, on)
@@ -198,14 +201,14 @@ func (h *HueConnection) pollState(
 						now := time.Now()
 						lightStatus.lastUpdate = &now
 
-						goveeMessages, twinklyMessages, switchbotMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
+						goveeMessages, twinklyMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
 					} else if lightStatus.brightness != brightness {
 						log.Debug().Msgf("Light [%s] state changed to [bri: %d]", name, brightness)
 						lightStatus.brightness = brightness
 						now := time.Now()
 						lightStatus.lastUpdate = &now
 
-						goveeMessages, switchbotMessages = configuration.GetMessagesToDispatchOnHueLightBrightnessChange(name, brightness)
+						goveeMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightBrightnessChange(name, brightness)
 					} else if lightStatus.x != x || lightStatus.y != y {
 						r, g, b := xyToRGB(x, y, rawBrightness)
 
@@ -235,6 +238,12 @@ func (h *HueConnection) pollState(
 					for _, message := range switchbotMessages {
 						if err := switchbotCommandSender.SendMsg(message); err != nil {
 							log.Err(err).Msg("error sending switchbot message")
+						}
+					}
+
+					for _, message := range wledMessages {
+						if err := wledCommandSender.SendMsg(message); err != nil {
+							log.Err(err).Msg("error sending wled message")
 						}
 					}
 				}

@@ -18,6 +18,7 @@ type Configuration struct {
 	AppName   string                                  `json:"app_name"`
 	Actions   []ConfigurationAction                   `json:"actions"`
 	Switchbot map[string]SwitchbotDeviceConfiguration `json:"switchbot"`
+	Wled      map[string]WledDeviceConfiguration      `json:"wled"`
 }
 
 func NewConfiguration() Configuration {
@@ -140,10 +141,11 @@ func (c *Configuration) IsLightRequired(lightName string) bool {
 	return false
 }
 
-func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName string, on bool) ([]GoveeMessage, []TwinklyMessage, []SwitchbotMessage) {
+func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName string, on bool) ([]GoveeMessage, []TwinklyMessage, []SwitchbotMessage, []WledMessage) {
 	var goveeMessages []GoveeMessage
 	var twinklyMessages []TwinklyMessage
 	var switchbotMessages []SwitchbotMessage
+	var wledMessages []WledMessage
 	for _, action := range c.Actions {
 		if action.Trigger == ActionTriggerHueLightSync && action.LightName == lightName {
 			for _, goveeAction := range action.GoveeActions {
@@ -239,14 +241,37 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName str
 					switchbotMessages = append(switchbotMessages, message)
 				}
 			}
+			for _, wledAction := range action.WledActions {
+				message := NewWledMessageForDevice(wledAction.Device)
+				switch wledAction.SyncValue {
+				case LightSyncValueOnOff:
+					if on {
+						message = message.TurnOn()
+					} else {
+						message = message.TurnOff()
+					}
+				case LightSyncValueOn:
+					if on {
+						message = message.TurnOn()
+					}
+				case LightSyncValueOff:
+					if !on {
+						message = message.TurnOff()
+					}
+				}
+				if !message.IsEmpty() {
+					wledMessages = append(wledMessages, message)
+				}
+			}
 		}
 	}
-	return goveeMessages, twinklyMessages, switchbotMessages
+	return goveeMessages, twinklyMessages, switchbotMessages, wledMessages
 }
 
-func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightName string, brightness int) ([]GoveeMessage, []SwitchbotMessage) {
+func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightName string, brightness int) ([]GoveeMessage, []SwitchbotMessage, []WledMessage) {
 	var goveeMessages []GoveeMessage
 	var switchbotMessages []SwitchbotMessage
+	var wledMessages []WledMessage
 	for _, action := range c.Actions {
 		if action.Trigger == ActionTriggerHueLightSync && action.LightName == lightName {
 			for _, goveeAction := range action.GoveeActions {
@@ -291,9 +316,58 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightNam
 					switchbotMessages = append(switchbotMessages, message)
 				}
 			}
+			for _, wledAction := range action.WledActions {
+				message := NewWledMessageForDevice(wledAction.Device)
+				switch wledAction.SyncValue {
+				case LightSyncValueBrightness:
+					brightnessToSend := brightness
+					if len(wledAction.BrightnessRange) == 2 {
+						brightnessToSend = getAdjustedBrightnessByRange(brightness, wledAction.BrightnessRange)
+					}
+					brightnessToSend = mapBrightness(brightnessToSend, []int{0, 100}, []int{0, 255})
+					message = message.SetBrightness(brightnessToSend)
+				}
+				if !message.IsEmpty() {
+					wledMessages = append(wledMessages, message)
+				}
+			}
 		}
 	}
-	return goveeMessages, switchbotMessages
+	return goveeMessages, switchbotMessages, wledMessages
+}
+
+func mapBrightness(brightness int, inRange []int, outRange []int) int {
+	// 1. Check for valid range lengths
+	if len(inRange) != 2 || len(outRange) != 2 {
+		return brightness
+	}
+
+	inRangeDelta := inRange[1] - inRange[0]
+	outRangeDelta := outRange[1] - outRange[0]
+
+	// 2. Handle the division by zero case (when input range is a single point)
+	if inRangeDelta == 0 {
+		// Return the lower bound of the output range if the input is within the single-point range,
+		// otherwise return the input, though a single-point range is usually illogical.
+		return outRange[0]
+	}
+
+	// Convert input and deltas to float64 for precise calculation
+	inVal := float64(brightness)
+	inMin := float64(inRange[0])
+	outMin := float64(outRange[0])
+
+	// Calculate the normalized position (0.0 to 1.0)
+	brightnessPercentageDelta := (inVal - inMin) / float64(inRangeDelta)
+
+	// Perform the linear mapping
+	mappedBrightnessFloat := outMin + (brightnessPercentageDelta * float64(outRangeDelta))
+
+	// 3. Use math.Round() for accurate integer conversion, then clamp the value
+	// Clamping ensures the result doesn't go outside the desired output range.
+	mappedBrightness := int(math.Round(math.Min(math.Max(mappedBrightnessFloat, outMin), float64(outRange[1]))))
+
+	return mappedBrightness
 }
 
 func getAdjustedBrightnessByRange(inBrightness int, brightnessRange []int) int {
