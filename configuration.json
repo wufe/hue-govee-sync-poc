@@ -13,6 +13,9 @@
     "wled": {
         "Fairy lights mobile ingresso": {
             "ip": "192.168.1.171"
+        },
+        "Lampada scrivania": {
+            "ip": "192.168.1.211"
         }
     },
     "actions": [
@@ -185,6 +188,16 @@
             "wled_actions": [
                 {
                     "device": "Fairy lights mobile ingresso",
+                    "sync_value": "on-off"
+                }
+            ]
+        },
+        {
+            "trigger": "hue light sync",
+            "light_name": "Hue play 1",
+            "wled_actions": [
+                {
+                    "device": "Lampada scrivania",
                     "sync_value": "on-off"
                 }
             ]
