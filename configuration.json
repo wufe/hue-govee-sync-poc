@@ -16,6 +16,9 @@
         },
         "Lampada scrivania": {
             "ip": "192.168.1.211"
+        },
+        "Piano cucina": {
+            "ip": "192.168.1.161"
         }
     },
     "actions": [
@@ -214,6 +217,12 @@
                     "device": "C8:95:CA:5F:C0:86:5D:50",
                     "action": "turn on"
                 }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "turn on"
+                }
             ]
         },
         {
@@ -227,6 +236,100 @@
                     "_friendly_device_name": "Kitchen Lamp",
                     "device": "C8:95:CA:5F:C0:86:5D:50",
                     "action": "turn off"
+                }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "turn off"
+                }
+            ]
+        },
+        {
+            "trigger": "hue tap dial button press",
+            "dial_name": "Dimmer switch cucina",
+            "_hue_tap_dial_buttons_2002": "short_release",
+            "hue_tap_dial_buttons": [
+                2002
+            ],
+            "govee_actions": [
+                {
+                    "_friendly_device_name": "Kitchen Lamp",
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "action": "turn on"
+                }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "increase brightness",
+                    "value": 20
+                }
+            ]
+        },
+        {
+            "trigger": "hue tap dial button press",
+            "dial_name": "Dimmer switch cucina",
+            "_hue_tap_dial_buttons_2001": "repeat",
+            "hue_tap_dial_buttons": [
+                2001
+            ],
+            "govee_actions": [
+                {
+                    "_friendly_device_name": "Kitchen Lamp",
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "action": "turn on"
+                }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "increase brightness",
+                    "value": 20
+                }
+            ]
+        },
+        {
+            "trigger": "hue tap dial button press",
+            "dial_name": "Dimmer switch cucina",
+            "_hue_tap_dial_buttons_2002": "short_release",
+            "hue_tap_dial_buttons": [
+                3002
+            ],
+            "govee_actions": [
+                {
+                    "_friendly_device_name": "Kitchen Lamp",
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "action": "turn on"
+                }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "decrease brightness",
+                    "value": 20
+                }
+            ]
+        },
+        {
+            "trigger": "hue tap dial button press",
+            "dial_name": "Dimmer switch cucina",
+            "_hue_tap_dial_buttons_2001": "repeat",
+            "hue_tap_dial_buttons": [
+                3001
+            ],
+            "govee_actions": [
+                {
+                    "_friendly_device_name": "Kitchen Lamp",
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "action": "turn on"
+                }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "decrease brightness",
+                    "value": 20
                 }
             ]
         }

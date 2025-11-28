@@ -7,6 +7,7 @@ type ActionTrigger string
 const (
 	ActionTriggerHueTapDialButtonPress ActionTrigger = "hue tap dial button press"
 	ActionTriggerHueLightSync          ActionTrigger = "hue light sync"
+	ActionTriggerPresenceSensor        ActionTrigger = "presence sensor"
 )
 
 type GoveeAction string
@@ -33,8 +34,11 @@ const (
 type WledAction string
 
 const (
-	WledActionTurnOn  WledAction = "turn on"
-	WledActionTurnOff WledAction = "turn off"
+	WledActionTurnOn             WledAction = "turn on"
+	WledActionTurnOff            WledAction = "turn off"
+	WledActionSetBrightness      WledAction = "set brightness"
+	WledActionIncreaseBrightness WledAction = "increase brightness"
+	WledActionDecreaseBrightness WledAction = "decrease brightness"
 )
 
 type LightSyncValue string
@@ -55,14 +59,15 @@ const (
 )
 
 type ConfigurationAction struct {
-	Trigger           ActionTrigger                        `json:"trigger"`
-	DialName          string                               `json:"dial_name"`
-	HueTapDialButtons []int                                `json:"hue_tap_dial_buttons"`
-	GoveeActions      []ConfigurationActionGoveeAction     `json:"govee_actions"`
-	TwinklyActions    []ConfigurationTwinklyAction         `json:"twinkly_actions"`
-	SwitchbotActions  []ConfigurationActionSwitchbotAction `json:"switchbot_actions"`
-	WledActions       []ConfigurationActionWledAction      `json:"wled_actions"`
-	LightName         string                               `json:"light_name"`
+	Trigger            ActionTrigger                        `json:"trigger"`
+	DialName           string                               `json:"dial_name"`
+	PresenceSensorName string                               `json:"presence_sensor_name"`
+	HueTapDialButtons  []int                                `json:"hue_tap_dial_buttons"`
+	GoveeActions       []ConfigurationActionGoveeAction     `json:"govee_actions"`
+	TwinklyActions     []ConfigurationTwinklyAction         `json:"twinkly_actions"`
+	SwitchbotActions   []ConfigurationActionSwitchbotAction `json:"switchbot_actions"`
+	WledActions        []ConfigurationActionWledAction      `json:"wled_actions"`
+	LightName          string                               `json:"light_name"`
 }
 
 type ConfigurationActionGoveeAction struct {
@@ -90,6 +95,7 @@ type ConfigurationActionWledAction struct {
 	Action          WledAction     `json:"action"`
 	SyncValue       LightSyncValue `json:"sync_value"`
 	BrightnessRange []int          `json:"brightness_range"`
+	Value           any            `json:"value"` // like for example "10" or for brightness increase, or "10" to set brightness exactly to 10
 }
 
 type GoveeMessage struct {
@@ -174,8 +180,9 @@ func (m WledMessage) TurnOff() WledMessage {
 	return m
 }
 
-// SetBrightness sets the brightness (0-255) in the WLED message
+// SetBrightness sets the brightness (0-100) in the WLED message
 func (m WledMessage) SetBrightness(brightness int) WledMessage {
+	brightness = mapBrightness(brightness, []int{0, 100}, []int{0, 255})
 	m.Body = []byte(fmt.Sprintf(`{"bri":%d}`, brightness))
 	return m
 }

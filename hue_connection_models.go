@@ -19,3 +19,8 @@ type LightStatus struct {
 	x          float64
 	y          float64
 }
+
+type PresenceSensorStatus struct {
+	presence    bool
+	lastUpdated *time.Time
+}

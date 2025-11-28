@@ -25,7 +25,34 @@ type HueConnection struct {
 	dialRotariesMutex    struct{ sync.RWMutex }
 	dialRotariesStatuses map[string]DialRotaryStatus
 
+	presenceSensorsStatuses sync.Map
+
 	lightsStatuses map[string]LightStatus
+
+	govee     *GoveeConnection
+	twinkly   *TwinklyConnection
+	switchbot *SwitchbotConnection
+	wled      *WledConnection
+
+	buttonPressedEventQueue  chan ButtonPressedEvent
+	presenceSensorEventQueue chan PresenceSensorEvent
+	lightChangeEventQueue    chan LightChangeEvent
+}
+
+type ButtonPressedEvent struct {
+	DeviceName string
+	Button     int
+}
+
+type PresenceSensorEvent struct {
+	DeviceName string
+	Presence   bool
+}
+
+type LightChangeEvent struct {
+	DeviceName    string
+	LastStatus    LightStatus
+	CurrentStatus LightStatus
 }
 
 func NewHueConnection(
@@ -43,16 +70,20 @@ func NewHueConnection(
 
 		bridgeIP:       bridgeIP,
 		bridgeUsername: bridgeUsername,
+
+		buttonPressedEventQueue:  make(chan ButtonPressedEvent, 100),
+		presenceSensorEventQueue: make(chan PresenceSensorEvent, 100),
+		lightChangeEventQueue:    make(chan LightChangeEvent, 100),
 	}
 }
 
 func (h *HueConnection) Start(
 	ctx context.Context,
 	configuration Configuration,
-	goveeCommandSender GoveeCommandSender,
-	twinklyCommandSender TwinklyCommandSender,
-	switchbotCommandSender SwitchbotCommandSender,
-	wledCommandSender WledCommandSender,
+	govee *GoveeConnection,
+	twinkly *TwinklyConnection,
+	switchbot *SwitchbotConnection,
+	wled *WledConnection,
 ) {
 	// TODO: Implement action in case the bridge IP is empty
 	// TODO: Implement action in case the bridge username is empty
@@ -60,18 +91,145 @@ func (h *HueConnection) Start(
 	bridge := huego.New(h.bridgeIP, h.bridgeUsername)
 	h.bridge = bridge
 
+	h.govee = govee
+	h.twinkly = twinkly
+	h.switchbot = switchbot
+	h.wled = wled
+
 	go h.periodicallyPollSensors(ctx, configuration)
 
-	h.pollState(ctx, configuration, goveeCommandSender, twinklyCommandSender, switchbotCommandSender, wledCommandSender)
+	go func() {
+		for event := range h.buttonPressedEventQueue {
+
+			goveeMessages, twinklyMessages, switchbotMessages, wledMessages := configuration.GetMessagesToDispatchOnHueTapDialButtonPressed(event.DeviceName, event.Button, h.wled)
+
+			for _, message := range goveeMessages {
+				if err := h.govee.SendMsg(message.Device, message.Data); err != nil {
+					log.Err(err).Msg("error sending message")
+				}
+			}
+
+			for _, message := range twinklyMessages {
+				if err := h.twinkly.SendMsg(message); err != nil {
+					log.Err(err).Msg("error sending twinkly message")
+				}
+			}
+
+			for _, message := range switchbotMessages {
+				if err := h.switchbot.SendMsg(message); err != nil {
+					log.Err(err).Msg("error sending switchbot message")
+				}
+			}
+
+			for _, message := range wledMessages {
+				if err := h.wled.SendMsg(message); err != nil {
+					log.Err(err).Msg("error sending wled message")
+				}
+			}
+		}
+	}()
+
+	go func() {
+		for event := range h.presenceSensorEventQueue {
+			goveeMessages, twinklyMessages, switchbotMessages, wledMessages := configuration.GetMessagesToDispatchOnHuePresenceSensorChange(event.DeviceName, event.Presence)
+
+			for _, message := range goveeMessages {
+				if err := h.govee.SendMsg(message.Device, message.Data); err != nil {
+					log.Err(err).Msg("error sending message")
+				}
+			}
+
+			for _, message := range twinklyMessages {
+				if err := h.twinkly.SendMsg(message); err != nil {
+					log.Err(err).Msg("error sending twinkly message")
+				}
+			}
+
+			for _, message := range switchbotMessages {
+				if err := h.switchbot.SendMsg(message); err != nil {
+					log.Err(err).Msg("error sending switchbot message")
+				}
+			}
+
+			for _, message := range wledMessages {
+				if err := h.wled.SendMsg(message); err != nil {
+					log.Err(err).Msg("error sending wled message")
+				}
+			}
+		}
+	}()
+
+	go func() {
+		for event := range h.lightChangeEventQueue {
+
+			lastStatus := event.LastStatus
+			currentStatus := event.CurrentStatus
+
+			var goveeMessages []GoveeMessage
+			var twinklyMessages []TwinklyMessage
+			var switchbotMessages []SwitchbotMessage
+			var wledMessages []WledMessage
+
+			if lastStatus.lastUpdate == nil {
+
+				r, g, b := xyToRGB(currentStatus.x, currentStatus.y, float64(mapBrightness(currentStatus.brightness, []int{0, 100}, []int{0, 255})))
+
+				log.Debug().Msgf("Light [%s] state changed to [on: %v, bri: %d, xy:<%f,%f>, rgb:<%d,%d,%d>]", event.DeviceName, currentStatus.on, currentStatus.brightness, currentStatus.x, currentStatus.y, r, g, b)
+
+				goveeMessages, twinklyMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(event.DeviceName, currentStatus.on)
+				goveeMessages = append(goveeMessages, configuration.GetMessagesToDispatchOnHueLightColorChange(event.DeviceName, r, g, b)...)
+
+			} else if lastStatus.on != currentStatus.on {
+
+				log.Debug().Msgf("Light [%s] state changed to [on: %v]", event.DeviceName, currentStatus.on)
+				goveeMessages, twinklyMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(event.DeviceName, currentStatus.on)
+
+			} else if lastStatus.brightness != currentStatus.brightness {
+
+				log.Debug().Msgf("Light [%s] state changed to [bri: %d]", event.DeviceName, currentStatus.brightness)
+
+				goveeMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightBrightnessChange(event.DeviceName, currentStatus.brightness)
+
+			} else if lastStatus.x != currentStatus.x || lastStatus.y != currentStatus.y {
+				r, g, b := xyToRGB(currentStatus.x, currentStatus.y, float64(mapBrightness(currentStatus.brightness, []int{0, 100}, []int{0, 255})))
+
+				log.Debug().Msgf("Light [%s] state changed to [xy:<%f,%f>, rgb:<%d,%d,%d>]", event.DeviceName, currentStatus.x, currentStatus.y, r, g, b)
+
+				goveeMessages = configuration.GetMessagesToDispatchOnHueLightColorChange(event.DeviceName, r, g, b)
+			}
+
+			for _, message := range goveeMessages {
+				if err := h.govee.SendMsg(message.Device, message.Data); err != nil {
+					log.Err(err).Msg("error sending govee message")
+				}
+			}
+
+			for _, message := range twinklyMessages {
+				if err := h.twinkly.SendMsg(message); err != nil {
+					log.Err(err).Msg("error sending twinkly message")
+				}
+			}
+
+			for _, message := range switchbotMessages {
+				if err := h.switchbot.SendMsg(message); err != nil {
+					log.Err(err).Msg("error sending switchbot message")
+				}
+			}
+
+			for _, message := range wledMessages {
+				if err := h.wled.SendMsg(message); err != nil {
+					log.Err(err).Msg("error sending wled message")
+				}
+			}
+		}
+	}()
+
+	h.pollState(ctx, configuration)
 }
 
 func (h *HueConnection) pollState(
 	ctx context.Context,
 	configuration Configuration,
-	goveeCommandSender GoveeCommandSender,
-	twinklyCommandSender TwinklyCommandSender,
-	switchbotCommandSender SwitchbotCommandSender,
-	wledCommandSender WledCommandSender,
 ) {
 	for {
 		time.Sleep(200 * time.Millisecond)
@@ -138,19 +296,58 @@ func (h *HueConnection) pollState(
 
 						buttonPressed := int(dialStatus.buttonEvent)
 
-						goveeMessages, twinklyMessages := configuration.GetMessagesToDispatchOnHueTapDialButtonPressed(dial.Name, buttonPressed)
+						h.buttonPressedEventQueue <- ButtonPressedEvent{
+							DeviceName: dial.Name,
+							Button:     buttonPressed,
+						}
+					}
+				}
+				{
+					if found, err := configuration.IsPresenceSensorPresent(name); err == nil && found {
+						sensorStatusInterface, _ := h.presenceSensorsStatuses.LoadOrStore(name, PresenceSensorStatus{
+							presence:    false,
+							lastUpdated: nil,
+						})
+						sensorStatus := sensorStatusInterface.(PresenceSensorStatus)
 
-						for _, message := range goveeMessages {
-							if err := goveeCommandSender.SendMsg(message.Device, message.Data); err != nil {
-								log.Err(err).Msg("error sending message")
+						sensorState := sensorValue["state"].(map[string]interface{})
+
+						lastUpdatedState := sensorState["lastupdated"].(string)
+						var lastUpdated time.Time
+						if lastUpdatedState == "none" {
+							lastUpdated = time.Time{}
+							continue
+						} else {
+							lastUpdated, err = time.Parse("2006-01-02T15:04:05", lastUpdatedState)
+							if err != nil {
+								log.Err(err).Msgf("error parsing time on presence sensor [%s]", name)
+								continue
 							}
 						}
 
-						for _, message := range twinklyMessages {
-							if err := twinklyCommandSender.SendMsg(message); err != nil {
-								log.Err(err).Msg("error sending twinkly message")
-							}
+						presenceAvailable := sensorState["presence"] != nil
+						if !presenceAvailable {
+							continue
 						}
+
+						presence := sensorState["presence"].(bool)
+
+						if sensorStatus.lastUpdated != nil && sensorStatus.lastUpdated.Equal(lastUpdated) && presence == sensorStatus.presence {
+							continue
+						}
+
+						sensorStatus.lastUpdated = &lastUpdated
+						sensorStatus.presence = presence
+						h.presenceSensorsStatuses.Store(name, sensorStatus)
+
+						log.Debug().Msgf("Presence sensor [%s] changed to [%v]", name, presence)
+
+						h.presenceSensorEventQueue <- PresenceSensorEvent{
+							DeviceName: name,
+							Presence:   presence,
+						}
+					} else if err != nil {
+						log.Err(err).Msgf("error checking presence sensor [%s] requirement", name)
 					}
 				}
 			}
@@ -160,13 +357,13 @@ func (h *HueConnection) pollState(
 			for _, rawLightValue := range lights {
 				light := rawLightValue.(map[string]interface{})
 
-				rawName := light["name"]
-				name := rawName.(string)
+				rawDeviceName := light["name"]
+				deviceName := rawDeviceName.(string)
 
-				required := configuration.IsLightRequired(name)
+				required := configuration.IsLightRequired(deviceName)
 
 				if required {
-					lightStatus := h.lightsStatuses[name]
+					lightStatus := h.lightsStatuses[deviceName]
 
 					lightState := light["state"].(map[string]interface{})
 
@@ -179,6 +376,7 @@ func (h *HueConnection) pollState(
 					if brightnessAvailable {
 						rawBrightness = lightState["bri"].(float64)
 						brightness = int(math.Max(math.Min((rawBrightness/255)*100, 100), 0))
+						Brightness.SetForDevice(deviceName, brightness)
 					}
 
 					var x float64 = 0
@@ -191,74 +389,21 @@ func (h *HueConnection) pollState(
 						y = xy[1].(float64)
 					}
 
-					var goveeMessages []GoveeMessage
-					var twinklyMessages []TwinklyMessage
-					var switchbotMessages []SwitchbotMessage
-					var wledMessages []WledMessage
-
-					if lightStatus.lastUpdate == nil {
-						r, g, b := xyToRGB(x, y, rawBrightness)
-
-						log.Debug().Msgf("Light [%s] state changed to [on: %v, bri: %d, xy:<%f,%f>, rgb:<%d,%d,%d>]", name, on, brightness, x, y, r, g, b)
-						lightStatus.on = on
-						lightStatus.brightness = brightness
-						lightStatus.x = x
-						lightStatus.y = y
-						now := time.Now()
-						lightStatus.lastUpdate = &now
-
-						goveeMessages, twinklyMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
-						goveeMessages = append(goveeMessages, configuration.GetMessagesToDispatchOnHueLightColorChange(name, r, g, b)...)
-					} else if lightStatus.on != on {
-						log.Debug().Msgf("Light [%s] state changed to [on: %v]", name, on)
-						lightStatus.on = on
-						now := time.Now()
-						lightStatus.lastUpdate = &now
-
-						goveeMessages, twinklyMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(name, on)
-					} else if lightStatus.brightness != brightness {
-						log.Debug().Msgf("Light [%s] state changed to [bri: %d]", name, brightness)
-						lightStatus.brightness = brightness
-						now := time.Now()
-						lightStatus.lastUpdate = &now
-
-						goveeMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightBrightnessChange(name, brightness)
-					} else if lightStatus.x != x || lightStatus.y != y {
-						r, g, b := xyToRGB(x, y, rawBrightness)
-
-						log.Debug().Msgf("Light [%s] state changed to [xy:<%f,%f>, rgb:<%d,%d,%d>]", name, x, y, r, g, b)
-						lightStatus.x = x
-						lightStatus.y = y
-						now := time.Now()
-						lightStatus.lastUpdate = &now
-
-						goveeMessages = configuration.GetMessagesToDispatchOnHueLightColorChange(name, r, g, b)
+					now := time.Now()
+					currentStatus := LightStatus{
+						lastUpdate: &now,
+						on:         on,
+						brightness: brightness,
+						x:          x,
+						y:          y,
 					}
 
-					h.lightsStatuses[name] = lightStatus
+					h.lightsStatuses[deviceName] = currentStatus
 
-					for _, message := range goveeMessages {
-						if err := goveeCommandSender.SendMsg(message.Device, message.Data); err != nil {
-							log.Err(err).Msg("error sending govee message")
-						}
-					}
-
-					for _, message := range twinklyMessages {
-						if err := twinklyCommandSender.SendMsg(message); err != nil {
-							log.Err(err).Msg("error sending twinkly message")
-						}
-					}
-
-					for _, message := range switchbotMessages {
-						if err := switchbotCommandSender.SendMsg(message); err != nil {
-							log.Err(err).Msg("error sending switchbot message")
-						}
-					}
-
-					for _, message := range wledMessages {
-						if err := wledCommandSender.SendMsg(message); err != nil {
-							log.Err(err).Msg("error sending wled message")
-						}
+					h.lightChangeEventQueue <- LightChangeEvent{
+						DeviceName:    deviceName,
+						LastStatus:    lightStatus,
+						CurrentStatus: currentStatus,
 					}
 				}
 			}
@@ -295,6 +440,7 @@ func (h *HueConnection) retrieveSensors(firstLook bool, configuration Configurat
 
 	dialsLocked := false
 	dialRotariesLocked := false
+	// presenceSensorsLocked := false
 
 	for _, sensor := range sensors {
 		if firstLook {
@@ -317,6 +463,12 @@ func (h *HueConnection) retrieveSensors(firstLook bool, configuration Configurat
 				dialRotariesLocked = true
 			}
 			h.dialRotaries[sensor.Name] = sensor
+		case "ZLLPresence":
+			// if !presenceSensorsLocked {
+			// 	h.presenceSensorsMutex.Lock()
+			// 	presenceSensorsLocked = true
+			// }
+			// h.presenceSensors[sensor.Name] = sensor
 		}
 	}
 
@@ -326,4 +478,7 @@ func (h *HueConnection) retrieveSensors(firstLook bool, configuration Configurat
 	if dialRotariesLocked {
 		h.dialRotariesMutex.Unlock()
 	}
+	// if presenceSensorsLocked {
+	// 	h.presenceSensorsMutex.Unlock()
+	// }
 }

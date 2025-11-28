@@ -9,7 +9,9 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"time"
 
+	"github.com/bluele/gcache"
 	"github.com/rs/zerolog/log"
 )
 
@@ -19,6 +21,8 @@ type Configuration struct {
 	Actions   []ConfigurationAction                   `json:"actions"`
 	Switchbot map[string]SwitchbotDeviceConfiguration `json:"switchbot"`
 	Wled      map[string]WledDeviceConfiguration      `json:"wled"`
+
+	presenceSensorActionsCache gcache.Cache
 }
 
 func NewConfiguration() Configuration {
@@ -50,6 +54,22 @@ func NewConfiguration() Configuration {
 		panic(fmt.Errorf("error unmarshalling configuration: %w", err))
 	}
 
+	configuration.presenceSensorActionsCache = gcache.New(0).
+		Expiration(60 * time.Second).
+		LoaderFunc(func(i any) (any, error) {
+			var foundAction *ConfigurationAction
+			for _, action := range configuration.Actions {
+				if action.Trigger == ActionTriggerPresenceSensor {
+					if action.PresenceSensorName == i.(string) {
+						foundAction = &action
+						return foundAction, nil
+					}
+				}
+			}
+			return foundAction, nil
+		}).
+		Build()
+
 	return configuration
 }
 
@@ -73,9 +93,15 @@ func (c *Configuration) GetRequiredHueDials() []string {
 	return dials
 }
 
-func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(dialName string, buttonPressed int) ([]GoveeMessage, []TwinklyMessage) {
+func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(
+	dialName string,
+	buttonPressed int,
+	wledBrightnessRetriever BrightnessRetriever,
+) ([]GoveeMessage, []TwinklyMessage, []SwitchbotMessage, []WledMessage) {
 	var goveeMessages []GoveeMessage
 	var twinklyMessages []TwinklyMessage
+	var switchbotMessages []SwitchbotMessage
+	var wledMessages []WledMessage
 	for _, action := range c.Actions {
 		if action.Trigger == ActionTriggerHueTapDialButtonPress && action.DialName == dialName {
 			if slices.Contains(action.HueTapDialButtons, buttonPressed) {
@@ -124,11 +150,72 @@ func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(dialName 
 					}
 					twinklyMessages = append(twinklyMessages, message)
 				}
+				for _, switchbotAction := range action.SwitchbotActions {
+					message := NewSwitchbotMessageForDevice(switchbotAction.Device)
+					switch switchbotAction.Action {
+					case SwitchbotActionTurnOn:
+						message = message.TurnOn()
+					case SwitchbotActionTurnOff:
+						message = message.TurnOff()
+					default:
+						err := fmt.Errorf("unknown Switchbot action: %s", switchbotAction.Action)
+						log.Err(err).Msgf("Error creating Switchbot message: %s", err)
+						continue
+					}
+					if !message.IsEmpty() {
+						switchbotMessages = append(switchbotMessages, message)
+					}
+				}
+				for _, wledAction := range action.WledActions {
+					message := NewWledMessageForDevice(wledAction.Device)
+					switch wledAction.Action {
+					case WledActionTurnOn:
+						message = message.TurnOn()
+					case WledActionTurnOff:
+						message = message.TurnOff()
+					case WledActionSetBrightness:
+						floatVal, ok := wledAction.Value.(float64)
+						if !ok {
+							floatVal = 50
+						}
+						intVal := int(floatVal)
+						message = message.SetBrightness(intVal)
+						Brightness.SetForDevice(wledAction.Device, intVal)
+					case WledActionIncreaseBrightness:
+						floatVal, ok := wledAction.Value.(float64)
+						if !ok {
+							floatVal = 10
+						}
+						intVal := int(floatVal)
+						currentBrightness := Brightness.GetDeviceBrightness(wledAction.Device, WithOnMissingBrightness(wledBrightnessRetriever.GetDeviceBrightness))
+						newBrightness := int(math.Min(float64(currentBrightness+intVal), 100))
+						message = message.SetBrightness(newBrightness)
+						Brightness.SetForDevice(wledAction.Device, newBrightness)
+					case WledActionDecreaseBrightness:
+						floatVal, ok := wledAction.Value.(float64)
+						if !ok {
+							floatVal = 10
+						}
+						intVal := int(floatVal)
+						currentBrightness := Brightness.GetDeviceBrightness(wledAction.Device, WithOnMissingBrightness(wledBrightnessRetriever.GetDeviceBrightness))
+						newBrightness := int(math.Max(float64(currentBrightness-intVal), 0))
+						message = message.SetBrightness(newBrightness)
+						Brightness.SetForDevice(wledAction.Device, newBrightness)
+					default:
+						err := fmt.Errorf("unknown WLED action: %s", wledAction.Action)
+						log.Err(err).Msgf("Error creating WLED message: %s", err)
+						continue
+					}
+					if !message.IsEmpty() {
+						log.Info().Msgf("Adding WLED message for device %s, action %s", wledAction.Device, wledAction.Action)
+						wledMessages = append(wledMessages, message)
+					}
+				}
 			}
 
 		}
 	}
-	return goveeMessages, twinklyMessages
+	return goveeMessages, twinklyMessages, switchbotMessages, wledMessages
 }
 
 func (c *Configuration) IsLightRequired(lightName string) bool {
@@ -276,6 +363,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightNam
 		if action.Trigger == ActionTriggerHueLightSync && action.LightName == lightName {
 			for _, goveeAction := range action.GoveeActions {
 				var message []byte
+				brightnessValueChanged := -1
 				switch goveeAction.SyncValue {
 				case LightSyncValueBrightness:
 					brightnessToSend := brightness
@@ -286,6 +374,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightNam
 						// brightnessToSend = int(math.Min(math.Max(float64(brightnessToSend), 0), 100))
 						brightnessToSend = getAdjustedBrightnessByRange(brightness, goveeAction.BrightnessRange)
 					}
+					brightnessValueChanged = brightnessToSend
 					message = mustMarshal(GoveeBrightnessRequest{
 						Msg: GoveeBrightnessRequestMsg{
 							Cmd: "brightness",
@@ -300,6 +389,9 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightNam
 						Device: goveeAction.Device,
 						Data:   message,
 					})
+					if brightnessValueChanged == -1 {
+						Brightness.SetForDevice(goveeAction.Device, brightnessValueChanged)
+					}
 				}
 			}
 			for _, switchbotAction := range action.SwitchbotActions {
@@ -412,4 +504,43 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightColorChange(lightName str
 		}
 	}
 	return messages
+}
+
+func (c *Configuration) GetRequiredPresenceSensors() []string {
+	var sensors []string
+	for _, action := range c.Actions {
+		if action.Trigger == ActionTriggerPresenceSensor {
+			sensors = append(sensors, action.PresenceSensorName)
+		}
+	}
+	return sensors
+}
+
+func (c *Configuration) IsPresenceSensorPresent(sensorName string) (bool, error) {
+	value, err := c.presenceSensorActionsCache.Get(sensorName)
+	if err != nil {
+		return false, fmt.Errorf("error getting presence sensor '%s' presence from cache: %w", sensorName, err)
+	}
+	if value == nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (c *Configuration) GetMessagesToDispatchOnHuePresenceSensorChange(name string, presence bool) ([]GoveeMessage, []TwinklyMessage, []SwitchbotMessage, []WledMessage) {
+	// var goveeMessages []GoveeMessage
+	// var twinklyMessages []TwinklyMessage
+	// var switchbotMessages []SwitchbotMessage
+	// var wledMessages []WledMessage
+	presenceSensorInterface, err := c.presenceSensorActionsCache.Get(name)
+	if err != nil {
+		log.Err(err).Msgf("Error getting presence sensor '%s' actions from cache: %s", name, err)
+		return nil, nil, nil, nil
+	}
+	if presenceSensorInterface == nil {
+		return nil, nil, nil, nil
+	}
+	// presenceSensorAction := presenceSensorInterface.(*ConfigurationAction)
+	// TODO: Implement this
+	return nil, nil, nil, nil
 }
