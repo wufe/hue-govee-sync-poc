@@ -197,7 +197,7 @@ func (h *HueConnection) Start(
 
 			for _, message := range goveeMessages {
 				if err := h.govee.SendMsg(message.Device, message.Data); err != nil {
-					log.Err(err).Msg("error sending govee message")
+					log.Err(err).Msgf("error sending govee message to device %s", message.Device)
 				}
 			}
 

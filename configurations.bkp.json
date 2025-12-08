@@ -1,7 +1,32 @@
 {
     "_start_cmd": "CGO_ENABLED=0 go run . -username bUyyAFv2eqfalt9VU1CBjNz-wr5IisSBJdwF4xY- -hue-bridge-ip 192.168.1.140 -twinkly-device-ip 192.168.1.110",
-    "bridge_ip": "192.168.1.140",
     "app_name": "hue-govee synchronizer",
+    "govee": {
+        "Bedroom Floor Lamp SX": {
+            "mac": "33:1E:D6:38:32:31:2A:3A"
+        },
+        "Bedroom Floor Lamp DX": {
+            "mac": "0C:D6:C8:6B:82:C6:2A:7B"
+        },
+        "Kitchen Floor Lamp": {
+            "mac": "C8:95:CA:5F:C0:86:5D:50"
+        },
+        "Balcony Lights": {
+            "mac": "D5:F2:CA:5F:C3:46:35:34"
+        },
+        "Living Room Floor Lamp": {
+            "mac": "16:FB:D3:44:A5:54:C2:2C"
+        },
+        "Living Room Strip Light": {
+            "mac": "34:D3:C7:6B:05:C6:67:69"
+        }
+    },
+    "hue": {
+        "bridge": {
+            "username": "bUyyAFv2eqfalt9VU1CBjNz-wr5IisSBJdwF4xY-",
+            "ip": "192.168.1.140"
+        }
+    },
     "switchbot": {
         "Piantana salone": {
             "device_id": "A84674452792",
@@ -19,6 +44,11 @@
         },
         "Piano cucina": {
             "ip": "192.168.1.156"
+        }
+    },
+    "twinkly": {
+        "Albero": {
+            "ip": "192.168.1.110"
         }
     },
     "actions": [

@@ -31,11 +31,7 @@ func NewGoveeConnection(
 	configuration Configuration,
 ) *GoveeConnection {
 
-	goveeDevices := configuration.GetRequiredGoveeDevices()
-	goveeDevicesOfInterest := make(map[string]*FoundGoveeDevice, len(goveeDevices))
-	for _, device := range goveeDevices {
-		goveeDevicesOfInterest[device] = nil
-	}
+	goveeDevicesOfInterest := make(map[string]*FoundGoveeDevice)
 
 	return &GoveeConnection{
 		goveeDevices:       goveeDevicesOfInterest,
@@ -103,55 +99,6 @@ func (c *GoveeConnection) Start(ctx context.Context) error {
 	return nil
 }
 
-// TODO: DELETE (DEPRECATED)
-func startUDPServer(ctx context.Context) (<-chan GoveeGenericResponse, func() error, error) {
-
-	resp := make(chan GoveeGenericResponse, 20)
-
-	serverAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", listenPort))
-	if err != nil {
-		return nil, nil, fmt.Errorf("error resolving server UDP address: %w", err)
-	}
-
-	serverConn, err := net.ListenUDP("udp", serverAddr)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error starting UDP server: %w", err)
-	}
-
-	go func() {
-		// Buffer to hold received data
-		buffer := make([]byte, 1024)
-
-		// Infinite loop to listen for responses
-		for {
-			select {
-			case <-ctx.Done():
-				serverConn.Close()
-				return
-			default:
-				n, _, err := serverConn.ReadFromUDP(buffer)
-				if err != nil {
-					log.Err(err).Msgf("Error reading UDP response: %s", err)
-					continue
-				}
-
-				// Parse the received JSON response
-				var response GoveeGenericResponse
-				err = json.Unmarshal(buffer[:n], &response)
-				if err != nil {
-					log.Err(err).Msgf("Error decoding JSON response: %s", err)
-					continue
-				}
-
-				resp <- response
-			}
-
-		}
-	}()
-
-	return resp, serverConn.Close, nil
-}
-
 func (c *GoveeConnection) listenToUDPMessages(ctx context.Context, receiveFromGovee <-chan GoveeGenericResponse) {
 	for {
 		select {
@@ -192,7 +139,15 @@ func (c *GoveeConnection) listenToUDPMessages(ctx context.Context, receiveFromGo
 				// }
 
 				if !ok || previousGoveeDeviceRegistered == nil {
-					log.Info().Msgf("Found Govee device [%s - %s - %s]", sku, ip, device)
+
+					alias, found := c.configuration.GetGoveeDeviceAliasByMAC(device)
+					if !found {
+						log.Info().Msgf("Ignoring unregistered Govee device [%s - %s - %s]", sku, ip, device)
+						c.goveeDevicesOfInterestMutex.Unlock()
+						continue
+					}
+
+					log.Info().Msgf("Found Govee device [%s - %s - %s - %s]", alias, sku, ip, device)
 
 					// Register the device
 					deviceRegistered := &FoundGoveeDevice{
@@ -201,7 +156,7 @@ func (c *GoveeConnection) listenToUDPMessages(ctx context.Context, receiveFromGo
 						Device:       device,
 						RegisteredAt: time.Now(),
 					}
-					c.goveeDevices[device] = deviceRegistered
+					c.goveeDevices[alias] = deviceRegistered
 
 					// Try to dial the device
 					go tryDialGoveeDevice(ctx, deviceRegistered)

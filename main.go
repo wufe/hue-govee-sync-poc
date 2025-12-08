@@ -40,44 +40,60 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	// Get CLI param
-	bridgeIP := flag.String("hue-bridge-ip", "", "ip of the Philips Hue bridge")
-	bridgeUsername := flag.String("username", "", "username of the Philips Hue bridge")
 	listen := flag.Bool("listen", false, "listen to events from the Hue bridge")
-	dialName := flag.String("dial", "", "name of the dial to listen to")
-	twinklyIP := flag.String("twinkly-device-ip", "", "ip of the Twinkly device to sync")
 	flag.Parse()
 
 	if *listen {
 		listenToEvents = true
 	}
 
-	if *dialName != "" {
-		dialToListenTo = *dialName
-	}
-
 	ctx := context.Background()
-
-	var twinklyConnection *TwinklyConnection
-
-	if *twinklyIP != "" {
-		twinklyConnection = NewTwinklyConnection(*twinklyIP)
-		if err := twinklyConnection.Login(ctx, *twinklyIP); err != nil {
-			panic(fmt.Errorf("error logging in to Twinkly device: %v", err))
-		}
-		log.Info().Msgf("Logged in to Twinkly device at %s", *twinklyIP)
-	} else {
-		twinklyConnection = NewNoopTwinklyConnection()
-	}
 
 	var wg sync.WaitGroup
 
 	configuration := NewConfiguration()
+
+	for _, device := range configuration.GetAllGoveeDeviceAliases() {
+		Status.Register(device, "Govee")
+	}
+
+	for _, device := range configuration.GetAllSwitchbotDeviceAliases() {
+		Status.Register(device, "Switchbot")
+	}
+
+	for _, device := range configuration.GetAllWledDeviceAliases() {
+		Status.Register(device, "WLED")
+	}
+
+	for _, device := range configuration.GetAllTwinklyDeviceAliases() {
+		Status.Register(device, "Twinkly")
+	}
 
 	goveeConnection := NewGoveeConnection(configuration)
 
 	switchbotConnection := NewSwitchbotConnection(configuration)
 
 	wledConnection := NewWledConnection(configuration)
+
+	var twinklyConnection *TwinklyConnection
+
+	if len(configuration.Twinkly) > 0 {
+		// Considering only the first device
+		// TODO: support multiple devices
+		twinklyIP := ""
+		for _, twinklyDeviceConfiguration := range configuration.Twinkly {
+			twinklyIP = twinklyDeviceConfiguration.IP
+			break
+		}
+
+		twinklyConnection = NewTwinklyConnection(twinklyIP)
+		if err := twinklyConnection.Login(ctx, twinklyIP); err != nil {
+			panic(fmt.Errorf("error logging in to Twinkly device: %v", err))
+		}
+		log.Info().Msgf("Logged in to Twinkly device at %s", twinklyIP)
+	} else {
+		twinklyConnection = NewNoopTwinklyConnection()
+	}
 
 	wg.Add(1)
 	go func() {
@@ -105,12 +121,20 @@ func main() {
 		}
 	}()
 
-	hueConnection := NewHueConnection(*bridgeIP, *bridgeUsername)
+	hueConnection := NewHueConnection(configuration.Hue.Bridge.IP, configuration.Hue.Bridge.Username)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		hueConnection.Start(ctx, configuration, goveeConnection, twinklyConnection, switchbotConnection, wledConnection)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := StartHTTPServer(); err != nil {
+			log.Err(err).Msgf("HTTP server error: %s", err)
+		}
 	}()
 
 	wg.Wait()

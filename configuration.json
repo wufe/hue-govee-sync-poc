@@ -1,7 +1,26 @@
 {
     "_start_cmd": "CGO_ENABLED=0 go run . -username bUyyAFv2eqfalt9VU1CBjNz-wr5IisSBJdwF4xY- -hue-bridge-ip 192.168.1.140 -twinkly-device-ip 192.168.1.110",
-    "bridge_ip": "192.168.1.140",
     "app_name": "hue-govee synchronizer",
+    "govee": {
+        "Bedroom Floor Lamp SX": {
+            "mac": "33:1E:D6:38:32:31:2A:3A"
+        },
+        "Bedroom Floor Lamp DX": {
+            "mac": "0C:D6:C8:6B:82:C6:2A:7B"
+        },
+        "Kitchen Floor Lamp": {
+            "mac": "C8:95:CA:5F:C0:86:5D:50"
+        },
+        "Balcony Lights": {
+            "mac": "D5:F2:CA:5F:C3:46:35:34"
+        },
+        "Living Room Floor Lamp": {
+            "mac": "16:FB:D3:44:A5:54:C2:2C"
+        },
+        "Living Room Strip Light": {
+            "mac": "34:D3:C7:6B:05:C6:67:69"
+        }
+    },
     "hue": {
         "bridge": {
             "username": "bUyyAFv2eqfalt9VU1CBjNz-wr5IisSBJdwF4xY-",
@@ -28,7 +47,7 @@
         }
     },
     "twinkly": {
-        "Albero": {
+        "Twinkly Device": {
             "ip": "192.168.1.110"
         }
     },
@@ -43,11 +62,11 @@
             ],
             "govee_actions": [
                 {
-                    "device": "33:1E:D6:38:32:31:2A:3A",
+                    "device": "Bedroom Floor Lamp SX",
                     "action": "turn on"
                 },
                 {
-                    "device": "0C:D6:C8:6B:82:C6:2A:7B",
+                    "device": "Bedroom Floor Lamp DX",
                     "action": "turn on"
                 }
             ]
@@ -62,11 +81,11 @@
             ],
             "govee_actions": [
                 {
-                    "device": "33:1E:D6:38:32:31:2A:3A",
+                    "device": "Bedroom Floor Lamp SX",
                     "action": "turn off"
                 },
                 {
-                    "device": "0C:D6:C8:6B:82:C6:2A:7B",
+                    "device": "Bedroom Floor Lamp DX",
                     "action": "turn off"
                 }
             ]
@@ -82,22 +101,22 @@
             "govee_actions": [
                 {
                     "_friendly_device_name": "Floor Lamp Basic",
-                    "device": "33:1E:D6:38:32:31:2A:3A",
+                    "device": "Bedroom Floor Lamp SX",
                     "action": "turn off"
                 },
                 {
                     "_friendly_device_name": "Floor Lamp Basic 2",
-                    "device": "0C:D6:C8:6B:82:C6:2A:7B",
+                    "device": "Bedroom Floor Lamp DX",
                     "action": "turn off"
                 },
                 {
                     "_friendly_device_name": "Kitchen Lamp",
-                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "device": "Kitchen Floor Lamp",
                     "action": "turn off"
                 },
                 {
                     "_friendly_device_name": "Balcony Lights",
-                    "device": "D5:F2:CA:5F:C3:46:35:34",
+                    "device": "Balcony Lights",
                     "action": "turn off"
                 }
             ],
@@ -143,7 +162,7 @@
             "govee_actions": [
                 {
                     "_friendly_device_name": "Strip Light",
-                    "device": "34:D3:C7:6B:05:C6:67:69",
+                    "device": "Living Room Strip Light",
                     "sync_value": "brightness",
                     "brightness_range": [
                         30,
@@ -152,13 +171,27 @@
                 },
                 {
                     "_friendly_device_name": "Strip Light",
-                    "device": "34:D3:C7:6B:05:C6:67:69",
+                    "device": "Living Room Strip Light",
                     "sync_value": "on-off"
                 },
                 {
                     "_friendly_device_name": "Balcony Lights",
-                    "device": "D5:F2:CA:5F:C3:46:35:34",
+                    "device": "Balcony Lights",
                     "sync_value": "on"
+                },
+                {
+                    "_friendly_device_name": "Floor Lamp Pro",
+                    "device": "Living Room Floor Lamp",
+                    "sync_value": "on-off"
+                },
+                {
+                    "_friendly_device_name": "Floor Lamp Pro",
+                    "device": "Living Room Floor Lamp",
+                    "sync_value": "brightness",
+                    "brightness_range": [
+                        0,
+                        50
+                    ]
                 }
             ],
             "twinkly_actions": [
@@ -211,7 +244,7 @@
             "govee_actions": [
                 {
                     "_friendly_device_name": "Kitchen Lamp",
-                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "device": "Kitchen Floor Lamp",
                     "action": "turn on"
                 }
             ],
@@ -231,7 +264,7 @@
             "govee_actions": [
                 {
                     "_friendly_device_name": "Kitchen Lamp",
-                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "device": "Kitchen Floor Lamp",
                     "action": "turn off"
                 }
             ],
@@ -252,7 +285,7 @@
             "govee_actions": [
                 {
                     "_friendly_device_name": "Kitchen Lamp",
-                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "device": "Kitchen Floor Lamp",
                     "action": "turn on"
                 }
             ],
@@ -274,7 +307,7 @@
             "govee_actions": [
                 {
                     "_friendly_device_name": "Kitchen Lamp",
-                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "device": "Kitchen Floor Lamp",
                     "action": "turn on"
                 }
             ],
@@ -296,7 +329,7 @@
             "govee_actions": [
                 {
                     "_friendly_device_name": "Kitchen Lamp",
-                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "device": "Kitchen Floor Lamp",
                     "action": "turn on"
                 }
             ],
@@ -318,7 +351,7 @@
             "govee_actions": [
                 {
                     "_friendly_device_name": "Kitchen Lamp",
-                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "device": "Kitchen Floor Lamp",
                     "action": "turn on"
                 }
             ],

@@ -103,6 +103,23 @@ type GoveeMessage struct {
 	Data   []byte
 }
 
+type GoveeDeviceConfiguration struct {
+	MAC string `json:"mac"`
+}
+
+type HueConfiguration struct {
+	Bridge HueBridgeDeviceConfiguration `json:"bridge"`
+}
+
+type HueBridgeDeviceConfiguration struct {
+	Username string `json:"username"`
+	IP       string `json:"ip"`
+}
+
+type TwinklyDeviceConfiguration struct {
+	IP string `json:"ip"`
+}
+
 type SwitchbotDeviceConfiguration struct {
 	DeviceID      string                              `json:"device_id"`
 	Authorization SwitchbotAuthorizationConfiguration `json:"authorization"`

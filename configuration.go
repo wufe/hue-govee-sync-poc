@@ -19,8 +19,11 @@ type Configuration struct {
 	BridgeIP  string                                  `json:"bridge_ip"`
 	AppName   string                                  `json:"app_name"`
 	Actions   []ConfigurationAction                   `json:"actions"`
+	Govee     map[string]GoveeDeviceConfiguration     `json:"govee"`
+	Hue       HueConfiguration                        `json:"hue"`
 	Switchbot map[string]SwitchbotDeviceConfiguration `json:"switchbot"`
 	Wled      map[string]WledDeviceConfiguration      `json:"wled"`
+	Twinkly   map[string]TwinklyDeviceConfiguration   `json:"twinkly"`
 
 	presenceSensorActionsCache gcache.Cache
 }
@@ -83,6 +86,47 @@ func (c *Configuration) GetRequiredGoveeDevices() []string {
 	return devices
 }
 
+func (c *Configuration) GetAllGoveeDeviceAliases() []string {
+	var aliases []string
+	for alias := range c.Govee {
+		aliases = append(aliases, alias)
+	}
+	return aliases
+}
+
+func (c *Configuration) GetGoveeDeviceAliasByMAC(mac string) (string, bool) {
+	for alias, deviceConfig := range c.Govee {
+		if deviceConfig.MAC == mac {
+			return alias, true
+		}
+	}
+	return "", false
+}
+
+func (c *Configuration) GetAllSwitchbotDeviceAliases() []string {
+	var aliases []string
+	for alias := range c.Switchbot {
+		aliases = append(aliases, alias)
+	}
+	return aliases
+}
+
+func (c *Configuration) GetAllWledDeviceAliases() []string {
+	var aliases []string
+	for alias := range c.Wled {
+		aliases = append(aliases, alias)
+	}
+	return aliases
+}
+
+func (c *Configuration) GetAllTwinklyDeviceAliases() []string {
+	var aliases []string
+	for alias := range c.Twinkly {
+		aliases = append(aliases, alias)
+	}
+	return aliases
+}
+
 func (c *Configuration) GetRequiredHueDials() []string {
 	var dials []string
 	for _, action := range c.Actions {
@@ -117,6 +161,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(
 								},
 							},
 						})
+						Status.SetOn(goveeAction.Device, true)
 					case GoveeActionTurnOff:
 						message = mustMarshal(GoveeTurn{
 							Msg: GoveeTurnMsg{
@@ -126,6 +171,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(
 								},
 							},
 						})
+						Status.SetOn(goveeAction.Device, false)
 					default:
 						err := fmt.Errorf("unknown Govee action: %s", goveeAction.Action)
 						log.Err(err).Msgf("Error creating Govee message: %s", err)
@@ -141,8 +187,10 @@ func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(
 					switch twinklyAction.Action {
 					case TwinklyActionTurnOn:
 						message = TwinklyMessageOn
+						Status.SetOn("Twinkly Device", true) // TODO: Add support to multiple devices
 					case TwinklyActionTurnOff:
 						message = TwinklyMessageOff
+						Status.SetOn("Twinkly Device", false) // TODO: Add support to multiple devices
 					default:
 						err := fmt.Errorf("unknown Twinkly action: %s", twinklyAction.Action)
 						log.Err(err).Msgf("Error creating Twinkly message: %s", err)
@@ -155,8 +203,10 @@ func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(
 					switch switchbotAction.Action {
 					case SwitchbotActionTurnOn:
 						message = message.TurnOn()
+						Status.SetOn(switchbotAction.Device, true)
 					case SwitchbotActionTurnOff:
 						message = message.TurnOff()
+						Status.SetOn(switchbotAction.Device, false)
 					default:
 						err := fmt.Errorf("unknown Switchbot action: %s", switchbotAction.Action)
 						log.Err(err).Msgf("Error creating Switchbot message: %s", err)
@@ -171,8 +221,10 @@ func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(
 					switch wledAction.Action {
 					case WledActionTurnOn:
 						message = message.TurnOn()
+						Status.SetOn(wledAction.Device, true)
 					case WledActionTurnOff:
 						message = message.TurnOff()
+						Status.SetOn(wledAction.Device, false)
 					case WledActionSetBrightness:
 						floatVal, ok := wledAction.Value.(float64)
 						if !ok {
@@ -181,6 +233,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(
 						intVal := int(floatVal)
 						message = message.SetBrightness(intVal)
 						Brightness.SetForDevice(wledAction.Device, intVal)
+						Status.SetBrightness(wledAction.Device, intVal)
 					case WledActionIncreaseBrightness:
 						floatVal, ok := wledAction.Value.(float64)
 						if !ok {
@@ -191,6 +244,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(
 						newBrightness := int(math.Min(float64(currentBrightness+intVal), 100))
 						message = message.SetBrightness(newBrightness)
 						Brightness.SetForDevice(wledAction.Device, newBrightness)
+						Status.SetBrightness(wledAction.Device, newBrightness)
 					case WledActionDecreaseBrightness:
 						floatVal, ok := wledAction.Value.(float64)
 						if !ok {
@@ -201,6 +255,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueTapDialButtonPressed(
 						newBrightness := int(math.Max(float64(currentBrightness-intVal), 0))
 						message = message.SetBrightness(newBrightness)
 						Brightness.SetForDevice(wledAction.Device, newBrightness)
+						Status.SetBrightness(wledAction.Device, newBrightness)
 					default:
 						err := fmt.Errorf("unknown WLED action: %s", wledAction.Action)
 						log.Err(err).Msgf("Error creating WLED message: %s", err)
@@ -248,6 +303,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName str
 								},
 							},
 						})
+						Status.SetOn(goveeAction.Device, true)
 					} else {
 						message = mustMarshal(GoveeTurn{
 							Msg: GoveeTurnMsg{
@@ -257,6 +313,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName str
 								},
 							},
 						})
+						Status.SetOn(goveeAction.Device, false)
 					}
 				case goveeAction.SyncValue == LightSyncValueOn && on:
 					message = mustMarshal(GoveeTurn{
@@ -267,6 +324,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName str
 							},
 						},
 					})
+					Status.SetOn(goveeAction.Device, true)
 				case goveeAction.SyncValue == LightSyncValueOff && !on:
 					message = mustMarshal(GoveeTurn{
 						Msg: GoveeTurnMsg{
@@ -276,6 +334,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName str
 							},
 						},
 					})
+					Status.SetOn(goveeAction.Device, false)
 				}
 				if message != nil {
 					goveeMessages = append(goveeMessages, GoveeMessage{
@@ -303,6 +362,11 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName str
 					}
 				}
 				if message != "" {
+					if message == TwinklyMessageOn {
+						Status.SetOn("Twinkly Device", true) // TODO: Add support to multiple devices
+					} else {
+						Status.SetOn("Twinkly Device", false) // TODO: Add support to multiple devices
+					}
 					twinklyMessages = append(twinklyMessages, message)
 				}
 			}
@@ -312,16 +376,20 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName str
 				case LightSyncValueOnOff:
 					if on {
 						message = message.TurnOn()
+						Status.SetOn(switchbotAction.Device, true)
 					} else {
 						message = message.TurnOff()
+						Status.SetOn(switchbotAction.Device, false)
 					}
 				case LightSyncValueOn:
 					if on {
 						message = message.TurnOn()
+						Status.SetOn(switchbotAction.Device, true)
 					}
 				case LightSyncValueOff:
 					if !on {
 						message = message.TurnOff()
+						Status.SetOn(switchbotAction.Device, false)
 					}
 				}
 				if !message.IsEmpty() {
@@ -334,16 +402,20 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightOnOffChange(lightName str
 				case LightSyncValueOnOff:
 					if on {
 						message = message.TurnOn()
+						Status.SetOn(wledAction.Device, true)
 					} else {
 						message = message.TurnOff()
+						Status.SetOn(wledAction.Device, false)
 					}
 				case LightSyncValueOn:
 					if on {
 						message = message.TurnOn()
+						Status.SetOn(wledAction.Device, true)
 					}
 				case LightSyncValueOff:
 					if !on {
 						message = message.TurnOff()
+						Status.SetOn(wledAction.Device, false)
 					}
 				}
 				if !message.IsEmpty() {
@@ -390,6 +462,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightNam
 						Data:   message,
 					})
 					if brightnessValueChanged == -1 {
+						Status.SetBrightness(goveeAction.Device, brightnessValueChanged)
 						Brightness.SetForDevice(goveeAction.Device, brightnessValueChanged)
 					}
 				}
@@ -403,6 +476,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightNam
 						brightnessToSend = getAdjustedBrightnessByRange(brightness, switchbotAction.BrightnessRange)
 					}
 					message = message.SetBrightness(brightnessToSend)
+					Status.SetBrightness(switchbotAction.Device, brightnessToSend)
 				}
 				if !message.IsEmpty() {
 					switchbotMessages = append(switchbotMessages, message)
@@ -418,6 +492,7 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightBrightnessChange(lightNam
 					}
 					brightnessToSend = mapBrightness(brightnessToSend, []int{0, 100}, []int{0, 255})
 					message = message.SetBrightness(brightnessToSend)
+					Status.SetBrightness(wledAction.Device, brightnessToSend)
 				}
 				if !message.IsEmpty() {
 					wledMessages = append(wledMessages, message)
@@ -493,6 +568,8 @@ func (c *Configuration) GetMessagesToDispatchOnHueLightColorChange(lightName str
 							},
 						},
 					})
+					Status.SetOn(goveeAction.Device, true)
+					Status.SetColor(goveeAction.Device, int(r), int(g), int(b))
 				}
 				if message != nil {
 					messages = append(messages, GoveeMessage{
