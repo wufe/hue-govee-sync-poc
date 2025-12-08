@@ -16,8 +16,21 @@ type LightStatus struct {
 	lastUpdate *time.Time
 	on         bool
 	brightness int
-	x          float64
-	y          float64
+	r          uint8
+	g          uint8
+	b          uint8
+}
+
+func (s LightStatus) EqualsOn(other LightStatus) bool {
+	return s.on == other.on
+}
+
+func (s LightStatus) EqualsBrightness(other LightStatus) bool {
+	return s.brightness == other.brightness
+}
+
+func (s LightStatus) EqualsColor(other LightStatus) bool {
+	return s.r == other.r && s.g == other.g && s.b == other.b
 }
 
 type PresenceSensorStatus struct {

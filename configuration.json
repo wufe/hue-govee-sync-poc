@@ -2,6 +2,12 @@
     "_start_cmd": "CGO_ENABLED=0 go run . -username bUyyAFv2eqfalt9VU1CBjNz-wr5IisSBJdwF4xY- -hue-bridge-ip 192.168.1.140 -twinkly-device-ip 192.168.1.110",
     "bridge_ip": "192.168.1.140",
     "app_name": "hue-govee synchronizer",
+    "hue": {
+        "bridge": {
+            "username": "bUyyAFv2eqfalt9VU1CBjNz-wr5IisSBJdwF4xY-",
+            "ip": "192.168.1.140"
+        }
+    },
     "switchbot": {
         "Piantana salone": {
             "device_id": "A84674452792",
@@ -18,7 +24,12 @@
             "ip": "192.168.1.211"
         },
         "Piano cucina": {
-            "ip": "192.168.1.161"
+            "ip": "192.168.1.156"
+        }
+    },
+    "twinkly": {
+        "Albero": {
+            "ip": "192.168.1.110"
         }
     },
     "actions": [
@@ -148,20 +159,6 @@
                     "_friendly_device_name": "Balcony Lights",
                     "device": "D5:F2:CA:5F:C3:46:35:34",
                     "sync_value": "on"
-                },
-                {
-                    "_friendly_device_name": "Floor Lamp Pro",
-                    "device": "16:FB:D3:44:A5:54:C2:2C",
-                    "sync_value": "on-off"
-                },
-                {
-                    "_friendly_device_name": "Floor Lamp Pro",
-                    "device": "16:FB:D3:44:A5:54:C2:2C",
-                    "sync_value": "brightness",
-                    "brightness_range": [
-                        0,
-                        50
-                    ]
                 }
             ],
             "twinkly_actions": [

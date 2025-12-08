@@ -2,6 +2,25 @@
     "_start_cmd": "CGO_ENABLED=0 go run . -username bUyyAFv2eqfalt9VU1CBjNz-wr5IisSBJdwF4xY- -hue-bridge-ip 192.168.1.140 -twinkly-device-ip 192.168.1.110",
     "bridge_ip": "192.168.1.140",
     "app_name": "hue-govee synchronizer",
+    "switchbot": {
+        "Piantana salone": {
+            "device_id": "A84674452792",
+            "authorization": {
+                "token": "06b6dcdb0dcdc720820f77fc19279169ace403a7ea501ba7f1eeb2d0266ef28f2e848bbb830d5823ba0b05d516d068bd"
+            }
+        }
+    },
+    "wled": {
+        "Fairy lights mobile ingresso": {
+            "ip": "192.168.1.171"
+        },
+        "Lampada scrivania": {
+            "ip": "192.168.1.211"
+        },
+        "Piano cucina": {
+            "ip": "192.168.1.156"
+        }
+    },
     "actions": [
         {
             "_friendly_device_name": "Dial Camera",
@@ -70,41 +89,39 @@
                     "device": "D5:F2:CA:5F:C3:46:35:34",
                     "action": "turn off"
                 }
+            ],
+            "twinkly_actions": [
+                {
+                    "action": "turn off"
+                }
             ]
         },
         {
+            "_friendly_device_name": "Dial Salone",
             "trigger": "hue tap dial button press",
-            "dial_name": "Dial salone",
+            "dial_name": "Hue tap dial switch 2",
             "hue_tap_dial_buttons": [
-                1002,
-                2002,
                 3002
             ],
-            "govee_actions": [
+            "twinkly_actions": [
                 {
-                    "_friendly_device_name": "Strip Light",
-                    "device": "34:D3:C7:6B:05:C6:67:69",
                     "action": "turn on"
                 }
             ]
         },
         {
+            "_friendly_device_name": "Dial Salone",
             "trigger": "hue tap dial button press",
-            "dial_name": "Dial salone",
+            "dial_name": "Hue tap dial switch 2",
             "hue_tap_dial_buttons": [
                 1003,
                 2003,
-                3003
+                3003,
+                4002,
+                4003
             ],
-            "govee_actions": [
+            "twinkly_actions": [
                 {
-                    "_friendly_device_name": "Kitchen Lamp",
-                    "device": "C8:95:CA:5F:C0:86:5D:50",
-                    "action": "turn off"
-                },
-                {
-                    "_friendly_device_name": "Strip Light",
-                    "device": "34:D3:C7:6B:05:C6:67:69",
                     "action": "turn off"
                 }
             ]
@@ -149,6 +166,41 @@
             ],
             "twinkly_actions": [
                 {
+                    "sync_value": "on",
+                    "_sync_value": "on-off"
+                }
+            ],
+            "switchbot_actions": [
+                {
+                    "device": "Piantana salone",
+                    "sync_value": "on-off"
+                },
+                {
+                    "device": "Piantana salone",
+                    "sync_value": "brightness",
+                    "brightness_range": [
+                        0,
+                        70
+                    ]
+                }
+            ]
+        },
+        {
+            "trigger": "hue light sync",
+            "light_name": "Ghirlanda TV",
+            "wled_actions": [
+                {
+                    "device": "Fairy lights mobile ingresso",
+                    "sync_value": "on-off"
+                }
+            ]
+        },
+        {
+            "trigger": "hue light sync",
+            "light_name": "Hue play 1",
+            "wled_actions": [
+                {
+                    "device": "Lampada scrivania",
                     "sync_value": "on-off"
                 }
             ]
@@ -165,6 +217,12 @@
                     "device": "C8:95:CA:5F:C0:86:5D:50",
                     "action": "turn on"
                 }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "turn on"
+                }
             ]
         },
         {
@@ -178,6 +236,100 @@
                     "_friendly_device_name": "Kitchen Lamp",
                     "device": "C8:95:CA:5F:C0:86:5D:50",
                     "action": "turn off"
+                }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "turn off"
+                }
+            ]
+        },
+        {
+            "trigger": "hue tap dial button press",
+            "dial_name": "Dimmer switch cucina",
+            "_hue_tap_dial_buttons_2002": "short_release",
+            "hue_tap_dial_buttons": [
+                2002
+            ],
+            "govee_actions": [
+                {
+                    "_friendly_device_name": "Kitchen Lamp",
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "action": "turn on"
+                }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "increase brightness",
+                    "value": 20
+                }
+            ]
+        },
+        {
+            "trigger": "hue tap dial button press",
+            "dial_name": "Dimmer switch cucina",
+            "_hue_tap_dial_buttons_2001": "repeat",
+            "hue_tap_dial_buttons": [
+                2001
+            ],
+            "govee_actions": [
+                {
+                    "_friendly_device_name": "Kitchen Lamp",
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "action": "turn on"
+                }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "increase brightness",
+                    "value": 20
+                }
+            ]
+        },
+        {
+            "trigger": "hue tap dial button press",
+            "dial_name": "Dimmer switch cucina",
+            "_hue_tap_dial_buttons_2002": "short_release",
+            "hue_tap_dial_buttons": [
+                3002
+            ],
+            "govee_actions": [
+                {
+                    "_friendly_device_name": "Kitchen Lamp",
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "action": "turn on"
+                }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "decrease brightness",
+                    "value": 20
+                }
+            ]
+        },
+        {
+            "trigger": "hue tap dial button press",
+            "dial_name": "Dimmer switch cucina",
+            "_hue_tap_dial_buttons_2001": "repeat",
+            "hue_tap_dial_buttons": [
+                3001
+            ],
+            "govee_actions": [
+                {
+                    "_friendly_device_name": "Kitchen Lamp",
+                    "device": "C8:95:CA:5F:C0:86:5D:50",
+                    "action": "turn on"
+                }
+            ],
+            "wled_actions": [
+                {
+                    "device": "Piano cucina",
+                    "action": "decrease brightness",
+                    "value": 20
                 }
             ]
         }

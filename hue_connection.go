@@ -172,30 +172,27 @@ func (h *HueConnection) Start(
 
 			if lastStatus.lastUpdate == nil {
 
-				r, g, b := xyToRGB(currentStatus.x, currentStatus.y, float64(mapBrightness(currentStatus.brightness, []int{0, 100}, []int{0, 255})))
-
-				log.Debug().Msgf("Light [%s] state changed to [on: %v, bri: %d, xy:<%f,%f>, rgb:<%d,%d,%d>]", event.DeviceName, currentStatus.on, currentStatus.brightness, currentStatus.x, currentStatus.y, r, g, b)
+				log.Debug().Msgf("Light [%s] state changed to [on: %v, bri: %d, rgb:<%d,%d,%d>]", event.DeviceName, currentStatus.on, currentStatus.brightness, currentStatus.r, currentStatus.g, currentStatus.b)
 
 				goveeMessages, twinklyMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(event.DeviceName, currentStatus.on)
-				goveeMessages = append(goveeMessages, configuration.GetMessagesToDispatchOnHueLightColorChange(event.DeviceName, r, g, b)...)
+				goveeMessages = append(goveeMessages, configuration.GetMessagesToDispatchOnHueLightColorChange(event.DeviceName, currentStatus.r, currentStatus.g, currentStatus.b)...)
 
-			} else if lastStatus.on != currentStatus.on {
+			} else if !lastStatus.EqualsOn(currentStatus) {
 
 				log.Debug().Msgf("Light [%s] state changed to [on: %v]", event.DeviceName, currentStatus.on)
 				goveeMessages, twinklyMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightOnOffChange(event.DeviceName, currentStatus.on)
 
-			} else if lastStatus.brightness != currentStatus.brightness {
+			} else if !lastStatus.EqualsBrightness(currentStatus) {
 
 				log.Debug().Msgf("Light [%s] state changed to [bri: %d]", event.DeviceName, currentStatus.brightness)
 
 				goveeMessages, switchbotMessages, wledMessages = configuration.GetMessagesToDispatchOnHueLightBrightnessChange(event.DeviceName, currentStatus.brightness)
 
-			} else if lastStatus.x != currentStatus.x || lastStatus.y != currentStatus.y {
-				r, g, b := xyToRGB(currentStatus.x, currentStatus.y, float64(mapBrightness(currentStatus.brightness, []int{0, 100}, []int{0, 255})))
+			} else if !lastStatus.EqualsColor(currentStatus) {
 
-				log.Debug().Msgf("Light [%s] state changed to [xy:<%f,%f>, rgb:<%d,%d,%d>]", event.DeviceName, currentStatus.x, currentStatus.y, r, g, b)
+				log.Debug().Msgf("Light [%s] state changed to [rgb:<%d,%d,%d>]", event.DeviceName, currentStatus.r, currentStatus.g, currentStatus.b)
 
-				goveeMessages = configuration.GetMessagesToDispatchOnHueLightColorChange(event.DeviceName, r, g, b)
+				goveeMessages = configuration.GetMessagesToDispatchOnHueLightColorChange(event.DeviceName, currentStatus.r, currentStatus.g, currentStatus.b)
 			}
 
 			for _, message := range goveeMessages {
@@ -379,14 +376,14 @@ func (h *HueConnection) pollState(
 						Brightness.SetForDevice(deviceName, brightness)
 					}
 
-					var x float64 = 0
-					var y float64 = 0
+					var r, g, b uint8
 					colorAvailable := lightState["xy"] != nil
 
 					if colorAvailable {
 						xy := lightState["xy"].([]interface{})
-						x = xy[0].(float64)
-						y = xy[1].(float64)
+						x := xy[0].(float64)
+						y := xy[1].(float64)
+						r, g, b = xyToRGB(x, y, rawBrightness)
 					}
 
 					now := time.Now()
@@ -394,8 +391,9 @@ func (h *HueConnection) pollState(
 						lastUpdate: &now,
 						on:         on,
 						brightness: brightness,
-						x:          x,
-						y:          y,
+						r:          r,
+						g:          g,
+						b:          b,
 					}
 
 					h.lightsStatuses[deviceName] = currentStatus

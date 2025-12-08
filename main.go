@@ -589,7 +589,6 @@ func xyIsInGamutRange(x, y float64) bool {
 func xyToRGB(x float64, y float64, brightness float64) (uint8, uint8, uint8) {
 
 	if !xyIsInGamutRange(x, y) {
-		fmt.Println("not in gamut")
 		x, y = getClosestColor(point{x, y})
 	}
 
