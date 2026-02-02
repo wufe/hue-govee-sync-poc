@@ -25,6 +25,11 @@
         "bridge": {
             "username": "bUyyAFv2eqfalt9VU1CBjNz-wr5IisSBJdwF4xY-",
             "ip": "192.168.1.140"
+        },
+        "devices": {
+            "Dial TV": {
+                "id": "00:17:88:01:0d:7d:a6:71-01-fc00-0014"
+            }
         }
     },
     "switchbot": {
@@ -360,6 +365,46 @@
                     "device": "Piano cucina",
                     "action": "decrease brightness",
                     "value": 20
+                }
+            ]
+        },
+        {
+            "trigger": "hue rotary dial change",
+            "description": "When brightness of Hue Play soggiorno 1 is at 100%, change the brightness according to dial input",
+            "condition": {
+                "enable": {
+                    "device": "Hue Play soggiorno 1",
+                    "attribute": "brightness",
+                    "operator": "equals",
+                    "value": 100
+                },
+                "disable": {
+                    "device": "Hue Play soggiorno 1",
+                    "attribute": "brightness",
+                    "operator": "not_equals",
+                    "value": 100
+                }
+            },
+            "dial_name": "Dial TV",
+            "govee_actions": [
+                {
+                    "_friendly_device_name": "Floor Lamp Pro",
+                    "device": "Living Room Floor Lamp",
+                    "action": "change brightness",
+                    "brightness_range": [
+                        0,
+                        50
+                    ]
+                }
+            ],
+            "switchbot_actions": [
+                {
+                    "device": "Piantana salone",
+                    "action": "change brightness",
+                    "brightness_range": [
+                        0,
+                        70
+                    ]
                 }
             ]
         }

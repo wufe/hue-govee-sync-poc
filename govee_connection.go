@@ -115,8 +115,15 @@ func (c *GoveeConnection) listenToUDPMessages(ctx context.Context, receiveFromGo
 				device := data["device"].(string)
 				sku := data["sku"].(string)
 
+				alias, found := c.configuration.GetGoveeDeviceAliasByMAC(device)
+				if !found {
+					log.Info().Msgf("Ignoring unregistered Govee device [%s - %s - %s]", sku, ip, device)
+					c.goveeDevicesOfInterestMutex.Unlock()
+					continue
+				}
+
 				c.goveeDevicesOfInterestMutex.Lock()
-				previousGoveeDeviceRegistered, ok := c.goveeDevices[device]
+				previousGoveeDeviceRegistered, ok := c.goveeDevices[alias]
 				// if ok && previousGoveeDeviceRegistered != nil {
 				// 	if previousGoveeDeviceRegistered.SKU != sku ||
 				// 		previousGoveeDeviceRegistered.IP != ip {
@@ -139,13 +146,6 @@ func (c *GoveeConnection) listenToUDPMessages(ctx context.Context, receiveFromGo
 				// }
 
 				if !ok || previousGoveeDeviceRegistered == nil {
-
-					alias, found := c.configuration.GetGoveeDeviceAliasByMAC(device)
-					if !found {
-						log.Info().Msgf("Ignoring unregistered Govee device [%s - %s - %s]", sku, ip, device)
-						c.goveeDevicesOfInterestMutex.Unlock()
-						continue
-					}
 
 					log.Info().Msgf("Found Govee device [%s - %s - %s - %s]", alias, sku, ip, device)
 
@@ -190,7 +190,7 @@ func tryDialGoveeDevice(ctx context.Context, device *FoundGoveeDevice) {
 		return
 	}
 
-	conn, err := net.Dial("udp", fmt.Sprintf("%s:%d", device.IP, sendPort))
+	conn, err := net.Dial("udp", net.JoinHostPort(device.IP, "4003"))
 	if err != nil {
 		err = fmt.Errorf("error dialing: %w", err)
 		log.Err(err).Msgf("Error connecting to Govee device [%s - %s - %s]", device.SKU, device.IP, device.Device)

@@ -5,17 +5,18 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"math"
-	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/amimof/huego"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/sanity-io/litter"
 )
 
 // https://app-h5.govee.com/user-manual/wlan-guide
@@ -41,6 +42,7 @@ func main() {
 
 	// Get CLI param
 	listen := flag.Bool("listen", false, "listen to events from the Hue bridge")
+	dev := flag.Bool("dev", false, "development mode (start vite server)")
 	flag.Parse()
 
 	if *listen {
@@ -88,7 +90,8 @@ func main() {
 
 		twinklyConnection = NewTwinklyConnection(twinklyIP)
 		if err := twinklyConnection.Login(ctx, twinklyIP); err != nil {
-			panic(fmt.Errorf("error logging in to Twinkly device: %v", err))
+			log.Err(err).Msgf("error logging in to Twinkly device: %s", err)
+			twinklyConnection = NewNoopTwinklyConnection()
 		}
 		log.Info().Msgf("Logged in to Twinkly device at %s", twinklyIP)
 	} else {
@@ -136,6 +139,80 @@ func main() {
 			log.Err(err).Msgf("HTTP server error: %s", err)
 		}
 	}()
+
+	tui := NewTUI()
+
+	var tuiWriter io.Writer
+	tuiWriter = zerolog.ConsoleWriter{Out: tui}
+	tuiWriter = &zerolog.FilteredLevelWriter{Writer: zerolog.LevelWriterAdapter{Writer: tuiWriter}, Level: zerolog.InfoLevel}
+
+	log.Logger = log.Output(tuiWriter)
+
+	ctx, quit := context.WithCancel(context.Background())
+
+	stdoutReader, stdoutWriter := io.Pipe()
+	stderrReader, stderrWriter := io.Pipe()
+
+	var cmd *exec.Cmd
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := tui.RunNewProgram(stdoutReader, stderrReader); err != nil {
+			// log.Err(err).Msgf("TUI error: %s", err)
+			fmt.Printf("TUI error: %s\n", err)
+			return
+		}
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		quit()
+		time.Sleep(100 * time.Millisecond)
+		if cmd != nil && cmd.Process != nil {
+			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		log.Info().Msgf("Exiting...")
+		os.Exit(0)
+	}()
+
+	time.Sleep(50 * time.Millisecond) // Give some time to the TUI to start
+
+	if *dev {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cmd = exec.CommandContext(ctx, "/bin/sh", "-c", "pnpm dev")
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+			stdout, err := cmd.StdoutPipe()
+			if err != nil {
+				log.Err(err).Msgf("Cannot get stdout pipe: %s", err)
+				return
+			}
+			stderr, err := cmd.StderrPipe()
+			if err != nil {
+				log.Err(err).Msgf("Cannot get stderr pipe: %s", err)
+				return
+			}
+
+			var streamWG sync.WaitGroup
+			streamWG.Add(1)
+			go func() {
+				defer streamWG.Done()
+				io.Copy(tui, io.TeeReader(stdout, stdoutWriter))
+			}()
+			streamWG.Add(1)
+			go func() {
+				defer streamWG.Done()
+				io.Copy(tui, io.TeeReader(stderr, stderrWriter))
+			}()
+
+			log.Info().Msgf("Starting dev server...")
+
+			if err := cmd.Start(); err != nil {
+				log.Err(err).Msgf("Cannot start command: %s", err)
+				return
+			}
+		}()
+	}
 
 	wg.Wait()
 }
@@ -492,81 +569,6 @@ func listenFromHueDevice(ctx context.Context, bridgeIP string, bridgeUsername st
 	}
 
 	// fmt.Println("sensors", sensors)
-}
-
-func connectToGoveeDeviceAndForward(ctx context.Context, sku string, receiveFromGovee <-chan GoveeGenericResponse, sendToGovee chan []byte) {
-	timeout, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	ip := ""
-
-L:
-	for {
-		select {
-		case msg, ok := <-receiveFromGovee:
-			if !ok {
-				return
-			}
-			fmt.Println("here:", msg)
-			switch msg.Msg.Cmd {
-			case "scan":
-				data := msg.Msg.Data.(map[string]interface{})
-				litter.Dump(data)
-				foundSKU := data["sku"].(string)
-				foundIP := data["ip"].(string)
-				if sku == foundSKU {
-					log.Info().Msgf("Received device %s response.", sku)
-					ip = foundIP
-					break L
-				}
-			default:
-				log.Warn().Msgf("Received a message of type %s but the program is not in a valid state to handle this kind of response", msg.Msg.Cmd)
-			}
-		case <-timeout.Done():
-			log.Warn().Msgf("Response not received in 10 seconds: closing.")
-			return
-		}
-	}
-
-	fmt.Printf("Command to send to %s:\n", ip)
-
-	conn, err := net.Dial("udp", fmt.Sprintf("%s:%d", ip, sendPort))
-	if err != nil {
-		panic(err)
-	}
-
-	go func() {
-		for {
-			select {
-			case msg, ok := <-receiveFromGovee:
-				if !ok {
-					return
-				}
-				switch msg.Msg.Cmd {
-				case "devStatus":
-					data := msg.Msg.Data.(map[string]interface{})
-					brightness := data["brightness"].(float64)
-					onOff := data["onOff"].(float64)
-					goveeOn = onOff == 1
-
-					goveeBrightness = brightness
-					log.Info().Msgf("Brightness of the device: %f", brightness)
-				default:
-					log.Warn().Msgf("Response type %#v not supported", msg.Msg.Cmd)
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	for msg := range sendToGovee {
-		log.Debug().Msgf("Sending datagram to %s: %s", ip, string(msg))
-		_, err := conn.Write(msg)
-		if err != nil {
-			log.Err(err).Msgf("Cannot write datagram: %s", err)
-		}
-	}
 }
 
 func mustMarshal(obj any) []byte {

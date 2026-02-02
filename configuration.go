@@ -621,3 +621,12 @@ func (c *Configuration) GetMessagesToDispatchOnHuePresenceSensorChange(name stri
 	// TODO: Implement this
 	return nil, nil, nil, nil
 }
+
+func (c *Configuration) GetDialNameByID(id string) (string, bool) {
+	for name, dial := range c.Hue.Devices {
+		if dial.ID == id {
+			return name, true
+		}
+	}
+	return "", false
+}

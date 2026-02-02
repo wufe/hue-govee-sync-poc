@@ -21,11 +21,13 @@ type HueConnection struct {
 	dialsMutex    struct{ sync.RWMutex }
 	dialsStatuses map[string]DialStatus
 
+	// These 3 attribtues are deprecated, in favore of dialSensorStatuses
 	dialRotaries         map[string]huego.Sensor
 	dialRotariesMutex    struct{ sync.RWMutex }
 	dialRotariesStatuses map[string]DialRotaryStatus
 
 	presenceSensorsStatuses sync.Map
+	dialSensorsStatuses     sync.Map
 
 	lightsStatuses map[string]LightStatus
 
@@ -299,7 +301,7 @@ func (h *HueConnection) pollState(
 						}
 					}
 				}
-				{
+				func() {
 					if found, err := configuration.IsPresenceSensorPresent(name); err == nil && found {
 						sensorStatusInterface, _ := h.presenceSensorsStatuses.LoadOrStore(name, PresenceSensorStatus{
 							presence:    false,
@@ -313,24 +315,24 @@ func (h *HueConnection) pollState(
 						var lastUpdated time.Time
 						if lastUpdatedState == "none" {
 							lastUpdated = time.Time{}
-							continue
+							return
 						} else {
 							lastUpdated, err = time.Parse("2006-01-02T15:04:05", lastUpdatedState)
 							if err != nil {
 								log.Err(err).Msgf("error parsing time on presence sensor [%s]", name)
-								continue
+								return
 							}
 						}
 
 						presenceAvailable := sensorState["presence"] != nil
 						if !presenceAvailable {
-							continue
+							return
 						}
 
 						presence := sensorState["presence"].(bool)
 
 						if sensorStatus.lastUpdated != nil && sensorStatus.lastUpdated.Equal(lastUpdated) && presence == sensorStatus.presence {
-							continue
+							return
 						}
 
 						sensorStatus.lastUpdated = &lastUpdated
@@ -346,7 +348,52 @@ func (h *HueConnection) pollState(
 					} else if err != nil {
 						log.Err(err).Msgf("error checking presence sensor [%s] requirement", name)
 					}
+				}()
+				{
+
 				}
+				go func() {
+					uniqueidInterface, ok := sensorValue["uniqueid"]
+					if !ok {
+						return
+					}
+					uniqueid := uniqueidInterface.(string)
+					if name, found := configuration.GetDialNameByID(uniqueid); found {
+						dialStatusInterface, _ := h.dialSensorsStatuses.LoadOrStore(name, DialSensorStatus{
+							rotaryEvent:           0,
+							expectedRotation:      0,
+							expectedEventDuration: 0,
+							lastUpdated:           nil,
+						})
+						dialStatus := dialStatusInterface.(DialSensorStatus)
+
+						dialState := sensorValue["state"].(map[string]interface{})
+						lastUpdatedState := dialState["lastupdated"].(string)
+						var lastUpdated time.Time
+						if lastUpdatedState != "none" {
+							lastUpdated, err = time.Parse("2006-01-02T15:04:05", lastUpdatedState)
+							if err != nil {
+								log.Err(err).Msgf("error parsing time on dial rotary [%s]", name)
+								return
+							}
+						} else {
+							lastUpdated = time.Time{}
+						}
+						if dialStatus.lastUpdated != nil && !dialStatus.lastUpdated.Equal(lastUpdated) {
+							expectedRotationInterface, ok := dialState["expectedrotation"]
+							if !ok {
+								return
+							}
+							expectedRotation := int(expectedRotationInterface.(float64))
+							dialStatus.expectedRotation = expectedRotation
+
+							log.Info().Msgf("Dial rotary [%s] expected rotation changed to [%d]", name, expectedRotation)
+						}
+
+						dialStatus.lastUpdated = &lastUpdated
+						h.dialSensorsStatuses.Store(name, dialStatus)
+					}
+				}()
 			}
 
 			lights := fullBridgeState["lights"].(map[string]interface{})

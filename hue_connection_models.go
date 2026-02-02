@@ -37,3 +37,10 @@ type PresenceSensorStatus struct {
 	presence    bool
 	lastUpdated *time.Time
 }
+
+type DialSensorStatus struct {
+	rotaryEvent           int
+	expectedRotation      int
+	expectedEventDuration int
+	lastUpdated           *time.Time
+}

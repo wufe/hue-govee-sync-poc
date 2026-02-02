@@ -108,12 +108,17 @@ type GoveeDeviceConfiguration struct {
 }
 
 type HueConfiguration struct {
-	Bridge HueBridgeDeviceConfiguration `json:"bridge"`
+	Bridge  HueBridgeDeviceConfiguration      `json:"bridge"`
+	Devices map[string]HueDeviceConfiguration `json:"devices"`
 }
 
 type HueBridgeDeviceConfiguration struct {
 	Username string `json:"username"`
 	IP       string `json:"ip"`
+}
+
+type HueDeviceConfiguration struct {
+	ID string `json:"id"`
 }
 
 type TwinklyDeviceConfiguration struct {
